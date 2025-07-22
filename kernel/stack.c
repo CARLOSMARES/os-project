@@ -1,4 +1,4 @@
-#include "stack.h"
+#include "core/stack.h"
 
 int create(struct stack *p, int nro_elementos)
 {
@@ -21,7 +21,7 @@ int push(struct stack *p, struct element elem)
     {
         return -1;
     }
-    if (isFull(*p) == 1)
+    if (is_full(p) == 1)
     {
         return -2;
     }
@@ -36,7 +36,7 @@ int pop(struct stack *p, struct element *e)
     {
         return -1;
     }
-    if (isEmpty(*p))
+    if (is_empty(p))
     {
         return -2;
     }
@@ -47,18 +47,18 @@ int pop(struct stack *p, struct element *e)
     return 1;
 }
 
-int isEmpty(struct stack p)
+int is_empty(struct stack *p)
 {
-    if (p.count == 0)
+    if (p->count == 0)
     {
         return 1;
     }
     return 0;
 }
 
-int isFull(struct stack p)
+int is_full(struct stack *p)
 {
-    if (p.count > p.top)
+    if (p->count > p->top)
     {
         return 1;
     }

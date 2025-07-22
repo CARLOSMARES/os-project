@@ -1,0 +1,78 @@
+# Archivos objeto y binarios
+*.o
+*.obj
+*.bin
+*.elf
+*.exe
+
+# Archivos ISO y de disco
+*.iso
+*.img
+*.qcow2
+
+# Directorios generados por el build
+isodir/
+build/
+dist/
+
+# Archivos temporales del sistema
+*~
+*.tmp
+*.temp
+.DS_Store
+Thumbs.db
+
+# Archivos de respaldo de editores
+*.bak
+*.swp
+*.swo
+*~
+
+# Archivos de depuración
+*.gdb
+*.dbg
+debug/
+
+# Archivos de logs
+*.log
+*.out
+
+# Directorios de montaje temporal
+/mnt/
+
+# Archivos específicos de QEMU
+qemu.log
+serial.log
+
+# Archivos de configuración local
+.vscode/settings.json
+.vscode/launch.json
+.idea/
+*.sublime-*
+
+# Archivos de sistema Linux/Unix
+.nfs*
+
+# Archivos específicos del toolchain
+*.d
+*.map
+
+# Archivos de documentación generada automáticamente
+docs/html/
+docs/latex/
+
+# Archivos de testing
+test_results/
+*.test
+
+# Archivos de backup automático
+.#*
+#*#
+
+# Archivos de core dumps
+core
+core.*
+*.core
+
+# Archivos específicos de make
+.make.cache
