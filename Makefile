@@ -15,13 +15,13 @@ GRUB_ISODIR = $(ISODIR)/boot/grub
 
 # Archivos fuente
 BOOT_ASM = $(BOOT_DIR)/boot.asm
-KERNEL_C = $(KERNEL_DIR)/kernel.c
+KERNEL_C_FILES = $(wildcard $(KERNEL_DIR)/*.c)
 KERNEL_LD = $(KERNEL_DIR)/kernel.ld
 GRUB_CFG = $(GRUB_DIR)/grub.cfg
 
 # Archivos objeto y ejecutables
 BOOT_O = boot.o
-KERNEL_O = kernel.o
+KERNEL_O_FILES = $(patsubst $(KERNEL_DIR)/%.c,%.o,$(KERNEL_C_FILES))
 KERNEL_ELF = kernel.elf
 OS_ISO = os.iso
 
@@ -44,9 +44,9 @@ $(OS_ISO): $(KERNEL_ELF) prepare-grub
 	$(GRUB_MKRESCUE) -o $(OS_ISO) $(ISODIR)
 
 # Enlazar el kernel
-$(KERNEL_ELF): $(BOOT_O) $(KERNEL_O)
+$(KERNEL_ELF): $(BOOT_O) $(KERNEL_O_FILES)
 	@echo "[+] Enlazando kernel..."
-	$(LD) $(LDFLAGS) $(BOOT_O) $(KERNEL_O) -o $(KERNEL_ELF)
+	$(LD) $(LDFLAGS) $(BOOT_O) $(KERNEL_O_FILES) -o $(KERNEL_ELF)
 
 # Compilar el archivo de arranque
 $(BOOT_O): $(BOOT_ASM)
@@ -54,19 +54,23 @@ $(BOOT_O): $(BOOT_ASM)
 	$(NASM) $(NASMFLAGS) $(BOOT_ASM) -o $(BOOT_O)
 
 # Compilar el kernel
-$(KERNEL_O): $(KERNEL_C)
-	@echo "[+] Compilando kernel.c..."
-	$(GCC) $(CFLAGS) -c $(KERNEL_C) -o $(KERNEL_O)
+$(KERNEL_O_FILES): %.o: $(KERNEL_DIR)/%.c
+	@echo "[+] Compilando $<..."
+	$(GCC) $(CFLAGS) -c $< -o $@
 
 # Preparar el directorio GRUB
 prepare-grub: $(KERNEL_ELF)
 	@echo "[+] Preparando GRUB..."
 	mkdir -p $(GRUB_ISODIR)
+	mkdir -p $(ISODIR)/usr/include
 	cp $(KERNEL_ELF) $(ISODIR)/boot/$(KERNEL_ELF)
 	cp $(GRUB_CFG) $(GRUB_ISODIR)/grub.cfg
+	cp -r $(INCLUDE_DIR)/* $(ISODIR)/usr/include/
 	@echo "[•] Verificando archivos..."
 	ls -la $(ISODIR)/boot/
 	ls -la $(GRUB_ISODIR)/
+	@echo "[•] Headers incluidos en /usr/include:"
+	ls -la $(ISODIR)/usr/include/
 
 # Limpiar archivos generados
 clean:
