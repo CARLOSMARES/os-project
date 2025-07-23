@@ -4,12 +4,6 @@
 #include "stdint.h"
 #include "types.h"
 
-// Definir size_t si no está definido
-#ifndef _SIZE_T_DEFINED
-#define _SIZE_T_DEFINED
-typedef unsigned long size_t;
-#endif
-
 // Constantes para printf
 #define PRINTF_BUFFER_SIZE 1024
 

@@ -8,6 +8,8 @@ QEMU = qemu-system-x86_64
 # Directorios
 BOOT_DIR = boot
 KERNEL_DIR = kernel
+FS_DIR = fs
+INIT_DIR = init
 GRUB_DIR = grub
 INCLUDE_DIR = include
 ISODIR = isodir
@@ -16,12 +18,16 @@ GRUB_ISODIR = $(ISODIR)/boot/grub
 # Archivos fuente
 BOOT_ASM = $(BOOT_DIR)/boot.asm
 KERNEL_C_FILES = $(wildcard $(KERNEL_DIR)/*.c)
+FS_C_FILES = $(wildcard $(FS_DIR)/*.c)
+INIT_C_FILES = $(wildcard $(INIT_DIR)/*.c)
 KERNEL_LD = $(KERNEL_DIR)/kernel.ld
 GRUB_CFG = $(GRUB_DIR)/grub.cfg
 
 # Archivos objeto y ejecutables
 BOOT_O = boot.o
-KERNEL_O_FILES = $(patsubst $(KERNEL_DIR)/%.c,%.o,$(KERNEL_C_FILES))
+KERNEL_O_FILES = $(patsubst $(KERNEL_DIR)/%.c,kernel_%.o,$(KERNEL_C_FILES))
+FS_O_FILES = $(patsubst $(FS_DIR)/%.c,fs_%.o,$(FS_C_FILES))
+INIT_O_FILES = $(patsubst $(INIT_DIR)/%.c,init_%.o,$(INIT_C_FILES))
 KERNEL_ELF = kernel.elf
 OS_ISO = os.iso
 
@@ -40,24 +46,70 @@ run: $(OS_ISO)
 	@echo "[✓] Ejecutando..."
 	$(QEMU) -cdrom $(OS_ISO)
 
+# Ejecutar ISO existente sin compilar
+run-iso:
+	@echo "[•] Verificando si existe $(OS_ISO)..."
+	@if [ -f $(OS_ISO) ]; then \
+		echo "[✓] Ejecutando ISO existente..."; \
+		$(QEMU) -cdrom $(OS_ISO); \
+	else \
+		echo "[!] Error: No se encontró $(OS_ISO)"; \
+		echo "[•] Ejecute 'make all' o 'make build-clean' primero para crear el ISO"; \
+		exit 1; \
+	fi
+
+# Ejecutar ISO con opciones adicionales de QEMU
+run-iso-debug:
+	@echo "[•] Verificando si existe $(OS_ISO)..."
+	@if [ -f $(OS_ISO) ]; then \
+		echo "[✓] Ejecutando ISO con debug habilitado..."; \
+		$(QEMU) -cdrom $(OS_ISO) -monitor stdio -d int,cpu_reset; \
+	else \
+		echo "[!] Error: No se encontró $(OS_ISO)"; \
+		echo "[•] Ejecute 'make all' o 'make build-clean' primero para crear el ISO"; \
+		exit 1; \
+	fi
+
+# Ejecutar ISO en modo gráfico mejorado
+run-iso-gui:
+	@echo "[•] Verificando si existe $(OS_ISO)..."
+	@if [ -f $(OS_ISO) ]; then \
+		echo "[✓] Ejecutando ISO en modo gráfico..."; \
+		$(QEMU) -cdrom $(OS_ISO) -vga std -display gtk; \
+	else \
+		echo "[!] Error: No se encontró $(OS_ISO)"; \
+		echo "[•] Ejecute 'make all' o 'make build-clean' primero para crear el ISO"; \
+		exit 1; \
+	fi
+
 # Crear la ISO
 $(OS_ISO): $(KERNEL_ELF) prepare-grub
 	@echo "[+] Creando ISO..."
 	$(GRUB_MKRESCUE) -o $(OS_ISO) $(ISODIR)
 
 # Enlazar el kernel
-$(KERNEL_ELF): $(BOOT_O) $(KERNEL_O_FILES)
+$(KERNEL_ELF): $(BOOT_O) $(INIT_O_FILES) $(KERNEL_O_FILES) $(FS_O_FILES)
 	@echo "[+] Enlazando kernel..."
-	$(LD) $(LDFLAGS) $(BOOT_O) $(KERNEL_O_FILES) -o $(KERNEL_ELF)
+	$(LD) $(LDFLAGS) $(BOOT_O) $(INIT_O_FILES) $(KERNEL_O_FILES) $(FS_O_FILES) -o $(KERNEL_ELF)
 
 # Compilar el archivo de arranque
 $(BOOT_O): $(BOOT_ASM)
 	@echo "[+] Compilando boot.asm..."
 	$(NASM) $(NASMFLAGS) $(BOOT_ASM) -o $(BOOT_O)
 
+# Compilar init (sistema de inicialización)
+$(INIT_O_FILES): init_%.o: $(INIT_DIR)/%.c
+	@echo "[+] Compilando sistema de inicialización $<..."
+	$(GCC) $(CFLAGS) -c $< -o $@
+
 # Compilar el kernel
-$(KERNEL_O_FILES): %.o: $(KERNEL_DIR)/%.c
+$(KERNEL_O_FILES): kernel_%.o: $(KERNEL_DIR)/%.c
 	@echo "[+] Compilando $<..."
+	$(GCC) $(CFLAGS) -c $< -o $@
+
+# Compilar el sistema de archivos
+$(FS_O_FILES): fs_%.o: $(FS_DIR)/%.c
+	@echo "[+] Compilando sistema de archivos $<..."
 	$(GCC) $(CFLAGS) -c $< -o $@
 
 # Preparar el directorio GRUB
@@ -79,6 +131,20 @@ clean:
 	@echo "[•] Limpiando..."
 	rm -rf $(ISODIR)
 	rm -f *.o *.bin *.iso *.elf *.qcow2
+
+# Limpiar solo archivos de compilación, conservar ISO
+clean-build:
+	@echo "[•] Limpiando archivos de compilación (conservando ISO)..."
+	rm -rf $(ISODIR)
+	rm -f *.o *.elf *.qcow2
+
+# Construir y limpiar - Solo deja el archivo ISO
+build-clean: $(OS_ISO)
+	@echo "[•] Limpiando archivos temporales (conservando $(OS_ISO))..."
+	rm -rf $(ISODIR)
+	rm -f *.o *.elf *.qcow2
+	@echo "[✓] Compilación completa. Solo queda: $(OS_ISO)"
+	@ls -lah $(OS_ISO)
 
 # Limpiar completamente (incluyendo archivos de respaldo)
 clean-all: clean
@@ -211,31 +277,37 @@ endif
 	@echo "[✓] USB booteable creado exitosamente"
 
 # Mostrar ayuda
+.PHONY: help
 help:
-	@echo "Makefile para el proyecto OS"
+	@echo "================================================"
+	@echo "           MicroCIOMOS - Comandos Make"
+	@echo "================================================"
+	@echo "Comandos principales:"
+	@echo "  make all         - Compilar todo el sistema"
+	@echo "  make run         - Compilar y ejecutar en QEMU"
+	@echo "  make build-clean - Compilar y limpiar (solo deja ISO)"
 	@echo ""
-	@echo "Objetivos disponibles:"
-	@echo "  all                  - Compilar y crear la ISO (objetivo por defecto)"
-	@echo "  run                  - Compilar, crear ISO y ejecutar en QEMU"
-	@echo "  create-hdd-image     - Crear imagen de disco duro virtual"
-	@echo "  install-to-hdd       - Instalar en disco duro virtual"
-	@echo "  run-hdd             - Ejecutar desde disco duro virtual"
-	@echo "  install-to-physical  - Mostrar info para instalar en disco físico"
-	@echo "  install-to-disk     - Instalar en disco físico (¡PELIGROSO!)"
-	@echo "  create-usb          - Mostrar info para crear USB booteable"
-	@echo "  install-usb         - Crear USB booteable"
-	@echo "  clean               - Limpiar archivos generados"
-	@echo "  clean-all           - Limpieza completa (incluye archivos de respaldo)"
-	@echo "  help                - Mostrar esta ayuda"
+	@echo "Comandos de ejecución directa:"
+	@echo "  make run-iso     - Ejecutar ISO existente (sin compilar)"
+	@echo "  make run-iso-debug - Ejecutar ISO con debug habilitado"
+	@echo "  make run-iso-gui   - Ejecutar ISO en modo gráfico"
 	@echo ""
-	@echo "Ejemplos de uso:"
-	@echo "  make                                    - Compilar el proyecto"
-	@echo "  make run                               - Compilar y ejecutar en QEMU"
-	@echo "  make run-hdd                           - Instalar y ejecutar desde HDD virtual"
-	@echo "  sudo make install-to-disk DISK=/dev/sdb - Instalar en disco físico"
-	@echo "  sudo make install-usb USB=/dev/sdb      - Crear USB booteable"
+	@echo "Comandos de limpieza:"
+	@echo "  make clean       - Limpiar todo (incluye ISO)"
+	@echo "  make clean-build - Limpiar compilación (conserva ISO)"
+	@echo "  make clean-all   - Limpieza completa + respaldos"
 	@echo ""
-	@echo "⚠️  ADVERTENCIA: Los comandos de instalación en disco físico/USB"
-	@echo "   borrarán COMPLETAMENTE el dispositivo especificado."
+	@echo "Otros comandos:"
+	@echo "  make create-hdd-image - Crear imagen de disco virtual"
+	@echo "  make install-to-hdd   - Instalar en disco virtual"
+	@echo "  make run-hdd         - Ejecutar desde disco virtual"
+	@echo "  make create-usb      - Mostrar info para USB booteable"
+	@echo "  make install-usb     - Crear USB booteable"
+	@echo ""
+	@echo "Archivos generados:"
+	@echo "  kernel.elf       - Ejecutable del kernel"
+	@echo "  os.iso          - Imagen ISO booteable"
+	@echo "================================================"
 
-.PHONY: all run clean clean-all help prepare-grub create-hdd-image install-to-hdd run-hdd install-to-physical install-to-disk create-usb install-usb
+# Directivas PHONY para asegurar que estos comandos siempre se ejecuten
+.PHONY: all run run-iso run-iso-debug run-iso-gui clean clean-build clean-all help prepare-grub build-clean create-hdd-image install-to-hdd run-hdd install-to-physical install-to-disk create-usb install-usb

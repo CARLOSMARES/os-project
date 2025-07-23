@@ -6,6 +6,7 @@ align 8
 global multiboot_header_start
 global _start
 
+; Multiboot2 header
 %define MAGIC 0xe85250d6
 %define ARCH 0  ; i386 protected mode
 %define HEADER_LEN (multiboot_header_end - multiboot_header_start)
@@ -16,6 +17,13 @@ multiboot_header_start:
     dd ARCH
     dd HEADER_LEN
     dd CHECKSUM
+    
+    ; Information request tag
+    align 8
+    dw 1    ; type = information request
+    dw 0    ; flags
+    dd 12   ; size
+    dd 6    ; mbi tag types - memory map
     
     ; End tag
     align 8
@@ -39,7 +47,7 @@ p2_table:
     resb 4096
 
 section .text
-extern kernel_main
+extern main
 
 _start:
     ; Limpiar registros de segmento y configurar el stack
@@ -190,8 +198,8 @@ long_mode_start:
     ; Limpiar pantalla
     call clear_screen_64
     
-    ; Llamar al kernel principal
-    call kernel_main
+    ; Llamar al main del sistema de inicialización
+    call main
 
 .hang:
     hlt
