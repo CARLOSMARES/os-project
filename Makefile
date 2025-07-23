@@ -25,9 +25,11 @@ KERNEL_O_FILES = $(patsubst $(KERNEL_DIR)/%.c,%.o,$(KERNEL_C_FILES))
 KERNEL_ELF = kernel.elf
 OS_ISO = os.iso
 
-# Flags del compilador
-CFLAGS = -ffreestanding -mcmodel=large -mno-red-zone -mno-mmx -mno-sse -mno-sse2 -I$(INCLUDE_DIR)
-LDFLAGS = -n -T $(KERNEL_LD)
+# Flags del compilador para SO desde cero (sin librerías del sistema)
+CFLAGS = -ffreestanding -nostdlib -nostdinc -fno-builtin -fno-stack-protector \
+         -mcmodel=large -mno-red-zone -mno-mmx -mno-sse -mno-sse2 \
+         -Wall -Wextra -Werror -I$(INCLUDE_DIR)
+LDFLAGS = -n -nostdlib -T $(KERNEL_LD)
 NASMFLAGS = -f elf64
 
 # Objetivo principal
