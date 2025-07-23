@@ -105,7 +105,6 @@ make help
 
 ## 📁 Estructura del Proyecto
 
-```
 os-project/
 ├── boot/           # Código de arranque en Assembly
 │   └── boot.asm    # Bootstrap inicial que llama a main()
@@ -136,7 +135,6 @@ os-project/
 ├── README.md       # Documentación principal
 ├── EJECUCION_ISO.md # Guía de comandos de ejecución
 └── .gitignore      # Archivos ignorados por git
-```
 
 ## ⚙️ Arquitectura del Sistema
 
@@ -243,18 +241,21 @@ make run-iso-debug
 
 ## 🛡️ Flujo de Trabajo Recomendado
 
-### Primera vez:
+### Primera vez
+
 ```bash
 make build-clean     # Compilar y generar ISO limpio
 ```
 
-### Desarrollo:
+### Desarrollo
+
 ```bash
 make run-iso         # Pruebas rápidas
 make run-iso-debug   # Si hay problemas
 ```
 
-### Presentación:
+### Presentación
+
 ```bash
 ./run.sh --info      # Verificar ISO
 ./run.sh --gui       # Demo en modo gráfico
