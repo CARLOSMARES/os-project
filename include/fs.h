@@ -2,7 +2,7 @@
 #define _FS_H
 
 #include "stdint.h"
-#include "types.h"
+#include "sys/types.h"
 
 // Constantes del sistema de archivos
 #define MAX_FILENAME 32

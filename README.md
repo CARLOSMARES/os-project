@@ -122,7 +122,8 @@ os-project/
 │   └── file.c      # Operaciones de archivos (POSIX-like)
 ├── include/        # Headers del sistema
 │   ├── stdint.h    # Tipos de datos estándar
-│   ├── types.h     # Definiciones de tipos
+│   ├── sys         # Headers del sys
+│       └──types.h     # Definiciones de tipos
 │   ├── stdio.h     # E/O estándar
 │   ├── fs.h        # Sistema de archivos
 │   ├── file.h      # Operaciones de archivos

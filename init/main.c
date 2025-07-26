@@ -30,7 +30,7 @@ __attribute__((used)) void main(void)
     init_filesystem();
 
     // Inicializar otros componentes del sistema
-    init_system();
+    // init_system();
 
     // Transferir control al kernel principal
     printf("\n[INIT] Transfiriendo control al kernel...\n");
@@ -52,12 +52,12 @@ void show_boot_info(void)
     // Inicializar VGA primero para poder mostrar texto
     vga_initialize();
 
-    printf("=====================================\n");
-    printf("        MicroCIOMOS v1.0            \n");
-    printf("=====================================\n");
+    printf("\t\t\t\t=====================================\n");
+    printf("\t\t\t\t        MicroCIOMOS v1.0            \n");
+    printf("\t\t\t\t=====================================\n");
     printf("\n[INIT] Iniciando sistema operativo...\n");
     printf("[INIT] Arquitectura: x86_64\n");
-    printf("[INIT] Compilado: %s %s\n", __DATE__, __TIME__);
+    // printf("[INIT] Compilado: %s %s\n", __DATE__, __TIME__);
     printf("\n");
 }
 
@@ -122,6 +122,10 @@ void init_filesystem(void)
     else
     {
         printf("  [ERROR] Fallo al inicializar sistema de archivos\n");
+        while (1)
+        {
+            __asm__ volatile("hlt");
+        }
     }
 }
 

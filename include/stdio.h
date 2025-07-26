@@ -2,7 +2,7 @@
 #define _STDIO_H
 
 #include "stdint.h"
-#include "types.h"
+#include "sys/types.h"
 
 // Constantes para printf
 #define PRINTF_BUFFER_SIZE 1024
