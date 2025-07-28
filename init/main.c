@@ -1,9 +1,31 @@
 #include "../include/stdio.h"
 #include "../include/vga_color.h"
+#include "../include/fs.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+__attribute__((section(".text"), used)) void _start(void);
+__attribute__((used)) void main(void);
+
+__attribute__((section(".text"), used)) void _start(void)
+{
+    main();
+    while (1)
+    {
+        __asm__ volatile("hlt");
+    }
+}
+
+#ifdef __cplusplus
+}
+#endif
 
 __attribute__((used)) void main(void)
 {
     vga_initialize();
+    fs_init(); // Inicializa el sistema de archivos
     // Mensaje centrado usando printf y padding
     const char *msg = "MicroCIOMOS";
     unsigned int len = 12; // strlen("MicroCIOMOS")
