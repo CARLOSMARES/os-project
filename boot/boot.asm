@@ -1,88 +1,89 @@
-BITS 32
-
-section .multiboot_header
-align 8
-
-global multiboot_header_start
-global _start
-
-; Multiboot2 header
-%define MAGIC 0xe85250d6
-%define ARCH 0  ; i386 protected mode
-%define HEADER_LEN (multiboot_header_end - multiboot_header_start)
-%define CHECKSUM (-(MAGIC + ARCH + HEADER_LEN) & 0xFFFFFFFF)
-
-multiboot_header_start:
-    dd MAGIC
-    dd ARCH
-    dd HEADER_LEN
-    dd CHECKSUM
-    
-    ; Information request tag
-    align 8
-    dw 1    ; type = information request
-    dw 0    ; flags
-    dd 12   ; size
-    dd 6    ; mbi tag types - memory map
-    
-    ; End tag
-    align 8
-    dw 0    ; type
-    dw 0    ; flags
-    dd 8    ; size
-multiboot_header_end:
-
-section .bss
-align 16
-stack_space: resb 16384       ; 16 KB stack
-stack_top:
-
-; Tablas de páginas para modo largo
-align 4096
-p4_table:
-    resb 4096
-p3_table:
-    resb 4096
-p2_table:
-    resb 4096
-
-section .text
-extern main
+[BITS 16]
+[ORG 0x7C00]
 
 _start:
-    ; Limpiar registros de segmento y configurar el stack
     cli
     cld
-    
-    ; Configurar stack pointer
-    mov esp, stack_space + 16384
-    
-    ; Verificar soporte para modo largo
-    call check_multiboot
-    call check_cpuid
-    call check_long_mode
-    
-    ; Configurar paginación
-    call setup_page_tables
-    call enable_paging
-    
-    ; Cargar GDT de 64 bits
-    lgdt [gdt64.pointer]
-    
-    ; Salto far para cambiar a modo largo
-    jmp gdt64.code_segment:long_mode_start
 
-; Verificar que estamos en multiboot
-check_multiboot:
-    cmp eax, 0x36d76289
-    jne .no_multiboot
+    xor ax, ax
+    mov ds, ax
+    mov es, ax
+    mov ss, ax
+    mov sp, 0x7C00
+    sti
+    
+    mov si, boot_msg
+    call print_string
+    
+    mov si, kernel_msg
+    call print_string
+    ; Habilitar A20
+    call enable_a20
+    
+    lgdt [gdt_descriptor]
+    mov eax, cr0
+    or eax, 1
+    mov cr0, eax
+    jmp CODE_SEG:init_pm
+
+enable_a20:
+    in al, 0x92
+    or al, 2
+    out 0x92, al
     ret
-.no_multiboot:
-    mov al, "M"
-    jmp error
 
-; Verificar soporte CPUID
-check_cpuid:
+print_string:
+    mov ah, 0x0e
+    mov bh, 0
+.loop:
+    lodsb
+    test al, al
+    jz .done
+    int 0x10
+    jmp .loop
+.done:
+    ret
+
+[BITS 32]
+init_pm:
+    mov ax, DATA_SEG
+    mov ds, ax
+    mov es, ax
+    mov fs, ax
+    mov gs, ax
+    mov ss, ax
+    mov esp, 0x9000
+
+    call check_64bit
+    test eax, eax
+    jz no_64bit
+
+    call setup_paging
+    
+    mov eax, cr4
+    or eax, 1 << 5      ; PAE
+    mov cr4, eax
+    
+    mov ecx, 0xC0000080 ; EFER MSR
+    rdmsr
+    or eax, 1 << 8      ; LME
+    wrmsr
+    
+    mov eax, cr0
+    or eax, 1 << 31     ; PG
+    mov cr0, eax
+    
+    ; Cargar GDT de 64 bits y saltar
+    lgdt [gdt64_descriptor]
+    jmp CODE64_SEG:long_mode_start
+
+no_64bit:
+    ; Mensaje de error y halt
+    cli
+    hlt
+
+check_64bit:
+    ; Verificar CPUID
     pushfd
     pop eax
     mov ecx, eax
@@ -91,127 +92,128 @@ check_cpuid:
     popfd
     pushfd
     pop eax
-    push ecx
-    popfd
-    cmp eax, ecx
-    je .no_cpuid
-    ret
-.no_cpuid:
-    mov al, "C"
-    jmp error
-
-; Verificar soporte para modo largo
-check_long_mode:
+    xor eax, ecx
+    jz .no_cpuid
+    
+    ; Verificar long mode
     mov eax, 0x80000000
     cpuid
     cmp eax, 0x80000001
-    jb .no_long_mode
+    jb .no_64bit
     
     mov eax, 0x80000001
     cpuid
     test edx, 1 << 29
-    jz .no_long_mode
-    ret
-.no_long_mode:
-    mov al, "L"
-    jmp error
-
-; Configurar tablas de páginas
-setup_page_tables:
-    ; Mapear primera entrada P4 a P3
-    mov eax, p3_table
-    or eax, 0b11 ; presente + escribible
-    mov [p4_table], eax
+    jz .no_64bit
     
-    ; Mapear primera entrada P3 a P2
-    mov eax, p2_table
-    or eax, 0b11 ; presente + escribible
-    mov [p3_table], eax
-    
-    ; Mapear cada entrada P2 a una página de 2MiB
-    mov ecx, 0
-.map_p2_table:
-    mov eax, 0x200000  ; 2MiB
-    mul ecx
-    or eax, 0b10000011 ; presente + escribible + huge page
-    mov [p2_table + ecx * 8], eax
-    inc ecx
-    cmp ecx, 512
-    jne .map_p2_table
-    
+    mov eax, 1
     ret
 
-; Habilitar paginación y modo largo
-enable_paging:
-    ; Cargar P4 en cr3
-    mov eax, p4_table
-    mov cr3, eax
-    
-    ; Habilitar PAE en cr4
-    mov eax, cr4
-    or eax, 1 << 5
-    mov cr4, eax
-    
-    ; Habilitar modo largo en EFER MSR
-    mov ecx, 0xC0000080
-    rdmsr
-    or eax, 1 << 8
-    wrmsr
-    
-    ; Habilitar paginación en cr0
-    mov eax, cr0
-    or eax, 1 << 31
-    mov cr0, eax
-    
+.no_cpuid:
+.no_64bit:
+    xor eax, eax
     ret
 
-error:
-    ; Mostrar código de error en VGA
-    mov dword [0xb8000], 0x4f524f45
-    mov dword [0xb8004], 0x4f3a4f52
-    mov dword [0xb8008], 0x4f204f20
-    mov byte  [0xb800a], al
-    hlt
+setup_paging:
+    ; Limpiar tablas de página
+    mov edi, 0x1000
+    mov cr3, edi
+    xor eax, eax
+    mov ecx, 4096
+    rep stosd
+    mov edi, cr3
 
-; GDT de 64 bits
-section .rodata
-gdt64:
-    dq 0 ; entrada cero
-.code_segment: equ $ - gdt64
-    dq (1 << 43) | (1 << 44) | (1 << 47) | (1 << 53) ; segmento de código
-.pointer:
-    dw $ - gdt64 - 1
-    dq gdt64
+    ; PML4[0] -> PDPT
+    mov dword [edi], 0x2003
+    add edi, 0x1000
+    
+    ; PDPT[0] -> PD
+    mov dword [edi], 0x3003
+    add edi, 0x1000
+    
+    ; PD entries (2MB pages)
+    mov dword [edi], 0x00000083
+    mov dword [edi + 8], 0x00200083
+    mov dword [edi + 16], 0x00400083
+    mov dword [edi + 24], 0x00600083
+    ret
 
-; Código de modo largo
-section .text
-BITS 64
+[BITS 64]
 long_mode_start:
-    ; Limpiar registros de segmento
-    mov ax, 0
-    mov ss, ax
+    ; Configurar segmentos en long mode
+    mov ax, DATA64_SEG
     mov ds, ax
     mov es, ax
     mov fs, ax
     mov gs, ax
+    mov ss, ax
+    mov rsp, 0x9000
     
     ; Limpiar pantalla
-    call clear_screen_64
+    mov rdi, 0xB8000
+    mov rcx, 2000
+    mov ax, 0x0720
+.clear_screen:
+    stosw
+    loop .clear_screen
     
-    ; Llamar al main del sistema de inicialización
-    call main
+    ; Saltar al kernel en 0x10000
+    mov rax, 0x10000
+    jmp rax
 
-.hang:
-    hlt
-    jmp .hang
+; GDT para modo protegido de 32 bits
+gdt_start:
+gdt_null:
+    dd 0x0
+    dd 0x0
 
-clear_screen_64:
-    mov rdi, 0xB8000        ; Dirección de video VGA
-    mov rcx, 80 * 25        ; 80 columnas x 25 filas
-    mov ax, 0x0720          ; Espacio (0x20) + atributo (0x07 = blanco sobre negro)
+gdt_code:
+    dw 0xffff       ; Límite 0-15
+    dw 0x0          ; Base 0-15
+    db 0x0          ; Base 16-23
+    db 10011010b    ; Flags de acceso
+    db 11001111b    ; Flags y límite 16-19
+    db 0x0          ; Base 24-31
 
-.clear_loop:
-    mov [rdi], ax
-    add rdi, 2
-    loop .clear_loop
-    ret
+gdt_data:
+    dw 0xffff       ; Límite 0-15
+    dw 0x0          ; Base 0-15
+    db 0x0          ; Base 16-23
+    db 10010010b    ; Flags de acceso
+    db 11001111b    ; Flags y límite 16-19
+    db 0x0          ; Base 24-31
+gdt_end:
+
+gdt_descriptor:
+    dw gdt_end - gdt_start - 1
+    dd gdt_start
+
+CODE_SEG equ gdt_code - gdt_start
+DATA_SEG equ gdt_data - gdt_start
+
+; GDT para long mode (64 bits)
+gdt64_start:
+gdt64_null:
+    dq 0x0
+
+gdt64_code:
+    dq 0x00af9a000000ffff  ; Segmento de código 64-bit
+
+gdt64_data:
+    dq 0x00af92000000ffff  ; Segmento de datos 64-bit
+gdt64_end:
+
+gdt64_descriptor:
+    dw gdt64_end - gdt64_start - 1
+    dd gdt64_start
+
+CODE64_SEG equ gdt64_code - gdt64_start
+DATA64_SEG equ gdt64_data - gdt64_start
+
+; Mensajes
+boot_msg db 'MicroCIOMOS Starting from ISO...', 13, 10, 0
+kernel_msg db 'Transitioning to protected mode...', 13, 10, 0
+
+; Boot signature
+times 510-($-$$) db 0
+dw 0xAA55

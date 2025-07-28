@@ -1,13 +1,9 @@
-ENTRY(_start)
+ENTRY(main)
 
 SECTIONS
 {
-  . = 1M;
-
-  .multiboot_header :
-  {
-    *(.multiboot_header*)
-  }
+  /* Kernel cargado en 0x10000 */
+  . = 0x10000;
 
   .text ALIGN(4K) :
   {
