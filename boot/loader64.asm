@@ -90,12 +90,25 @@ lmode:
     mov ss, ax
     mov rsp, 0x9000
 
+
     ; Debug: '6' (modo largo)
     mov byte [0xB8000+16], '6'
     mov byte [0xB8000+17], 0x0F
 
+    ; Escribir patrón visible en la primera línea de la pantalla (A, B, C...)
+    mov rcx, 80
+    mov rdi, 0xB8000
+    mov al, 'A'
+    mov ah, 0x1E
+write_pattern:
+    mov [rdi], al
+    mov [rdi+1], ah
+    add rdi, 2
+    inc al
+    loop write_pattern
+
     ; Saltar al kernel (main en C, 64 bits)
-    jmp 0x10000
+    jmp 0x11000
 
 align 16
 GDT:

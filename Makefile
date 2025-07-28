@@ -13,6 +13,7 @@ BUILD_DIR = build
 OUTPUT_DIR = output
 ISODIR = $(BUILD_DIR)/isodir
 
+
 # Archivos fuente
 BOOT_ASM = $(BOOT_DIR)/boot.asm
 BOOT_LD = $(BOOT_DIR)/boot.ld
@@ -22,6 +23,7 @@ LOADER64_BIN = $(BUILD_DIR)/loader64.bin
 BOOT_LD = $(BOOT_DIR)/boot.ld
 FS_C_FILES = $(wildcard $(FS_DIR)/*.c)
 INIT_C_FILES = $(wildcard $(INIT_DIR)/*.c)
+KERNEL_C_FILES = $(wildcard $(KERNEL_DIR)/*.c)
 KERNEL_LD = $(KERNEL_DIR)/kernel.ld
 
 # Archivos objeto y ejecutables
