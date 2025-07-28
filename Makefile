@@ -16,12 +16,16 @@ ISODIR = $(BUILD_DIR)/isodir
 # Archivos fuente
 BOOT_ASM = $(BOOT_DIR)/boot.asm
 BOOT_LD = $(BOOT_DIR)/boot.ld
-KERNEL_C_FILES = $(wildcard $(KERNEL_DIR)/*.c)
+BOOT_ASM = $(BOOT_DIR)/boot.asm
+LOADER64_ASM = $(BOOT_DIR)/loader64.asm
+LOADER64_BIN = $(BUILD_DIR)/loader64.bin
+BOOT_LD = $(BOOT_DIR)/boot.ld
 FS_C_FILES = $(wildcard $(FS_DIR)/*.c)
 INIT_C_FILES = $(wildcard $(INIT_DIR)/*.c)
 KERNEL_LD = $(KERNEL_DIR)/kernel.ld
 
 # Archivos objeto y ejecutables
+BOOT_BIN = $(BUILD_DIR)/boot.bin
 BOOT_BIN = $(BUILD_DIR)/boot.bin
 KERNEL_BIN = $(BUILD_DIR)/kernel.bin
 KERNEL_O_FILES = $(patsubst $(KERNEL_DIR)/%.c,$(BUILD_DIR)/kernel_%.o,$(KERNEL_C_FILES))
@@ -31,10 +35,12 @@ OS_ISO = $(OUTPUT_DIR)/os.iso
 
 # Flags del compilador para SO desde cero (sin librerías del sistema)
 CFLAGS = -ffreestanding -nostdlib -nostdinc -fno-builtin -fno-stack-protector \
-         -mcmodel=large -mno-red-zone -mno-mmx -mno-sse -mno-sse2 \
-         -Wall -Wextra -Werror -I$(INCLUDE_DIR)
-LDFLAGS = -n -nostdlib -T $(KERNEL_LD)
+		 -mcmodel=large -mno-red-zone -mno-mmx -mno-sse -mno-sse2 \
+		 -Wall -Wextra -Os -fdata-sections -ffunction-sections \
+		 -I$(INCLUDE_DIR)
+LDFLAGS = -n -nostdlib -T $(KERNEL_LD) --gc-sections
 NASMFLAGS = -f bin
+
 
 # Objetivo principal
 all: $(OS_ISO)
@@ -45,19 +51,33 @@ clean:
 	rm -rf $(BUILD_DIR) $(OUTPUT_DIR)
 
 # Crear ISO booteable con bootloader personalizado (sin GRUB)
-$(OS_ISO): $(BOOT_BIN) $(KERNEL_BIN)
-	@echo "[+] Creando ISO booteable con bootloader personalizado..."
-	# Crear directorios de salida
+$(LOADER64_BIN): $(LOADER64_ASM)
+	@echo "[+] Ensamblando loader64 (segundo stage)..."
+	mkdir -p $(BUILD_DIR)
+	nasm -f bin $(LOADER64_ASM) -o $(LOADER64_BIN)
+
+# Crear ISO booteable con bootloader de dos etapas (MBR + loader64 + kernel)
+$(OS_ISO): $(BOOT_BIN) $(LOADER64_BIN) $(KERNEL_BIN)
+	@echo "[+] Creando ISO booteable con bootloader de dos etapas..."
 	mkdir -p $(OUTPUT_DIR)
 	mkdir -p $(ISODIR)/boot
-	# Crear imagen de floppy virtual que contiene bootloader + kernel
-	dd if=/dev/zero of=$(ISODIR)/boot/bootdisk.img bs=512 count=2880
-	dd if=$(BOOT_BIN) of=$(ISODIR)/boot/bootdisk.img bs=512 count=1 conv=notrunc
-	dd if=$(KERNEL_BIN) of=$(ISODIR)/boot/bootdisk.img bs=512 seek=1 conv=notrunc
-	# Crear ISO con El Torito usando la imagen de floppy como boot image
+	cat $(BOOT_BIN) $(LOADER64_BIN) $(KERNEL_BIN) > $(ISODIR)/boot/bootimage.bin
+	truncate -s 1474560 $(ISODIR)/boot/bootimage.bin
 	genisoimage -quiet -V "MicroCIOMOS" -input-charset iso8859-1 \
-		-o $(OS_ISO) -b boot/bootdisk.img -hide boot/bootdisk.img \
-		-boot-load-size 4 -boot-info-table -no-emul-boot $(ISODIR)
+		-o $(OS_ISO) -b boot/bootimage.bin -no-emul-boot -boot-load-size 2880 \
+		-hide boot/bootimage.bin build/isodir
+	@echo "[✓] ISO creada: $(OS_ISO)"
+	@echo "[+] Creando ISO booteable con bootloader propio..."
+	mkdir -p $(OUTPUT_DIR)
+	mkdir -p $(ISODIR)/boot
+	# Concatenar bootloader y kernel
+	cat $(BOOT_BIN) $(KERNEL_BIN) > $(ISODIR)/boot/bootimage.bin
+	# Rellenar hasta 1.44MB (tamaño de floppy, requerido por El Torito)
+	truncate -s 1474560 $(ISODIR)/boot/bootimage.bin
+	# Crear ISO con El Torito, usando nuestro bootloader
+	genisoimage -quiet -V "MicroCIOMOS" -input-charset iso8859-1 \
+		-o $(OS_ISO) -b boot/bootimage.bin -no-emul-boot -boot-load-size 2880 \
+		-hide boot/bootimage.bin $(ISODIR)
 	@echo "[✓] ISO creada: $(OS_ISO)"
 
 # Compilar el bootloader
