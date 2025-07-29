@@ -1,4 +1,8 @@
-; boot/boot.asm - MBR mínimo (512 bytes)
+
+times 510-($-$$) db 0
+
+
+; boot/boot.asm - Boot sector para ISO (El Torito, no emulación, INT 13h extensions)
 [BITS 16]
 [ORG 0x7C00]
 
@@ -11,41 +15,46 @@ start:
     mov sp, 0x7C00
     sti
 
-    ; Mostrar '1' en pantalla (debug)
+    ; Mostrar 'I' (inicio)
     mov ax, 0xB800
     mov es, ax
-    mov byte [es:0], '1'
+    mov byte [es:0], 'I'
     mov byte [es:1], 0x0F
 
-    ; Cargar loader64 (segundo stage) a 0x10000 (lineal, sin offset)
-    mov ax, 0x1000
-    mov es, ax
-    xor bx, bx
-    mov ah, 0x02        ; función leer sectores
-    mov al, 8           ; asume loader64.bin ocupa 8 sectores (4 KB) (ajusta si es necesario)
-    mov ch, 0           ; cilindro 0
-    mov cl, 2           ; sector inicial 2
-    mov dh, 0           ; cabeza 0
-    mov dl, 0x00        ; drive 0
+    ; Preparar buffer de DAP (Disk Address Packet) para INT 13h función 42h
+    mov si, dap
+
+    mov ah, 0x42        ; Extended Read
+    mov dl, 0xE0        ; Unidad típica de CD-ROM en BIOS El Torito (puede ser 0x80-0xE0)
     int 0x13
     jc disk_error
 
-    ; Mostrar '2' en pantalla (debug)
+
+    ; Mostrar 'L' si la lectura fue exitosa
     mov ax, 0xB800
     mov es, ax
-    mov byte [es:2], '2'
-    mov byte [es:3], 0x0F
+    mov byte [es:2], 'L'
+    mov byte [es:3], 0x0E
 
-    ; Saltar al loader (modo real, 0x10000)
+    ; Saltar a loader64 (modo real, 0x10000:0x0000)
     jmp 0x1000:0x0000
 
 disk_error:
     mov ax, 0xB800
     mov es, ax
-    mov byte [es:0], 'E'
-    mov byte [es:1], 0x0C
-    cli
-    hlt
+    mov byte [es:4], 'E'
+    mov byte [es:5], 0x0C
+    jmp $
 
-times 510-($-$$) db 0
-dw 0xAA55
+; Disk Address Packet (DAP) para INT 13h función 42h
+; Debe estar alineado a 16 bits y dentro de los primeros 64K
+dap:
+    db 0x10         ; Tamaño del DAP (16 bytes)
+    db 0            ; Reservado
+    dw 1            ; Número de sectores a leer
+    dw 0x0000       ; Offset destino (0x0000)
+    dw 0x1000       ; Segmento destino (0x10000)
+    dq 17           ; LBA a leer (sector 17, justo después del boot sector)
+
+; El sector de arranque para ISO debe ser de 2048 bytes
+times 2048-($-$$) db 0

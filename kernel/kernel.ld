@@ -2,8 +2,8 @@ ENTRY(_start)
 
 SECTIONS
 {
-  /* Kernel cargado en 0x10000 */
-  . = 0x10000;
+  /* Kernel cargado en 0x11000 (debe coincidir con el salto del loader64) */
+  . = 0x11000;
 
   .text ALIGN(4K) :
   {

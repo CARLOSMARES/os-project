@@ -11,14 +11,47 @@ start_loader:
     mov sp, 0x9000
     sti
 
-    ; Debug: 'L' (modo real)
+    ; Debug: 'L' (modo real, columna 6)
     mov ax, 0xB800
     mov es, ax
-    mov byte [es:4], 'L'
-    mov byte [es:5], 0x0F
+    mov byte [es:6], 'L'
+    mov byte [es:7], 0x0F
+
+    ; --- Cargar kernel desde ISO (sector 18+, LBA) a 0x11000 usando INT 13h extensions ---
+    ; Asume: loader64 está en sector 17 (LBA 17), kernel inicia en sector 18 (LBA 18)
+    ; Tamaño típico kernel: 64 sectores (ajusta según tu kernel real)
+    mov si, kernel_lba_packet
+    mov ah, 0x42            ; INT 13h extensión: leer sectores LBA
+    mov dl, 0x80            ; 0x80 = primer disco duro (prueba para BIOS/VMs)
+    int 0x13
+    jc disk_error
+
+    ; Debug: 'K' (cargar kernel OK, columna 8)
+    mov ax, 0xB800
+    mov es, ax
+    mov byte [es:8], 'K'
+    mov byte [es:9], 0x0A
+
+    jmp cargar_gdt
+
+disk_error:
+    mov ax, 0xB800
+    mov es, ax
+    mov byte [es:8], 'E'    ; Error de disco
+    mov byte [es:9], 0x4C
+    hlt
+
+cargar_gdt:
 
     ; GDT 32 bits
     lgdt [gdt_desc]
+; --- Paquete LBA para INT 13h extensions ---
+kernel_lba_packet:
+    db 0x10                 ; Tamaño del paquete (16 bytes)
+    db 0                    ; Reservado
+    dw 8                    ; Número de sectores a leer (prueba con 8 sectores)
+    dq 0x11000              ; Dirección destino (RAM física)
+    dq 18                   ; LBA de inicio (sector 18 en ISO)
 
     ; Habilitar A20
     in al, 0x92
@@ -39,9 +72,9 @@ pmode:
     mov ss, ax
     mov esp, 0x9000
 
-    ; Debug: 'P' (modo protegido)
-    mov byte [0xB8000+8], 'P'
-    mov byte [0xB8000+9], 0x0F
+    ; Debug: 'P' (modo protegido, columna 10)
+    mov byte [0xB8000+10], 'P'
+    mov byte [0xB8000+11], 0x0F
 
     ; Habilitar PAE
     mov eax, cr4
@@ -91,24 +124,47 @@ lmode:
     mov rsp, 0x9000
 
 
-    ; Debug: '6' (modo largo)
-    mov byte [0xB8000+16], '6'
-    mov byte [0xB8000+17], 0x0F
 
-    ; Escribir patrón visible en la primera línea de la pantalla (A, B, C...)
-    mov rcx, 80
-    mov rdi, 0xB8000
-    mov al, 'A'
-    mov ah, 0x1E
-write_pattern:
-    mov [rdi], al
-    mov [rdi+1], ah
-    add rdi, 2
-    inc al
-    loop write_pattern
+    ; Debug: '6' (modo largo, columna 18)
+    mov byte [0xB8000+18], '6'
+    mov byte [0xB8000+19], 0x0F
 
-    ; Saltar al kernel (main en C, 64 bits)
+    ; ; Escribir patrón visible en la primera línea de la pantalla (A, B, C...)
+    ; mov rcx, 80
+    ; mov rdi, 0xB8000
+    ; mov al, 'A'
+    ; mov ah, 0x1E
+;write_pattern:
+    ; mov [rdi], al
+    ; mov [rdi+1], ah
+    ; add rdi, 2
+    ; inc al
+    ; loop write_pattern
+
+    ; DEBUG: Escribir 'L' en la esquina superior izquierda (VGA modo texto)
+    mov rax, 0xB8000
+    mov word [rax], 0x0F4C   ; 0x0F = blanco, 'L' = 0x4C
+
+    ; Limpieza de registros antes de saltar al kernel
+    xor rax, rax
+    xor rbx, rbx
+    xor rcx, rcx
+    xor rdx, rdx
+    xor rsi, rsi
+    xor rdi, rdi
+    xor rbp, rbp
+
+    ; Saltar al kernel (0x11000, debe coincidir con kernel.ld y _start)
     jmp 0x11000
+    ; Limpieza de registros antes de saltar al kernel
+    ;xor rax, rax
+    ;xor rbx, rbx
+    ;xor rcx, rcx
+    ;xor rdx, rdx
+    ;xor rsi, rsi
+    ;xor rdi, rdi
+    ;xor rbp, rbp
+    ;jmp 0x11000
 
 align 16
 GDT:
