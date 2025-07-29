@@ -14,14 +14,7 @@ extern "C"
     {
         vga_initialize();
 
-        // DEBUG: Escribir 'K' en la esquina superior izquierda (VGA)
-        volatile unsigned short *vga = (unsigned short *)0xB8000;
-        vga[0] = (0x0F << 8) | 'K';
         main();
-        while (1)
-        {
-            __asm__ volatile("hlt");
-        }
     }
 
     __attribute__((used)) void main(void)

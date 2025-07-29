@@ -103,6 +103,7 @@ $(OS_ISO): $(BOOT_BIN) $(LOADER64_BIN) $(KERNEL_BIN)
 		-quiet \
 		$(ISO_DIR)
 	rm $(ISO_DIR)/pad $(ISO_DIR)/bootfull.img $(ISO_DIR)/boot.bin
+	rm -rf build
 
 # --- Limpieza ---
 clean:

@@ -20,9 +20,10 @@ start_loader:
     ; --- Cargar kernel desde ISO (sector 18+, LBA) a 0x11000 usando INT 13h extensions ---
     ; Asume: loader64 está en sector 17 (LBA 17), kernel inicia en sector 18 (LBA 18)
     ; Tamaño típico kernel: 64 sectores (ajusta según tu kernel real)
+
     mov si, kernel_lba_packet
     mov ah, 0x42            ; INT 13h extensión: leer sectores LBA
-    mov dl, 0x80            ; 0x80 = primer disco duro (prueba para BIOS/VMs)
+    mov dl, 0x00            ; 0x00 = CD/ISO (prueba alternativa)
     int 0x13
     jc disk_error
 
@@ -32,7 +33,13 @@ start_loader:
     mov byte [es:8], 'K'
     mov byte [es:9], 0x0A
 
-    jmp cargar_gdt
+    ; Bucle infinito para depuración
+    mov ax, 0xB800
+    mov es, ax
+    mov byte [es:12], 'X'   ; Marca que llegó aquí
+    mov byte [es:13], 0x0C
+dep_loop:
+    jmp dep_loop
 
 disk_error:
     mov ax, 0xB800
