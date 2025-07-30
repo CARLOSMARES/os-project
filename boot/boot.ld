@@ -1,12 +1,11 @@
-ENTRY(_start)
+ENTRY(start)
 
 SECTIONS
 {
-  /* Boot sector cargado en 0x7c00 */
-  . = 0x7c00;
-  
+  . = 0x8000;
   .boot :
   {
+    *(.text*)
     *(.boot*)
   }
 }

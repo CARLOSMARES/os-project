@@ -17,9 +17,7 @@ BUILD_DIR = build
 OUTPUT_DIR = output
 ISO_DIR = $(BUILD_DIR)/isodir
 
-# Archivos fuente
 BOOT_ASM = $(BOOT_DIR)/boot.asm
-LOADER64_ASM = $(BOOT_DIR)/loader64.asm
 KERNEL_LD = $(KERNEL_DIR)/kernel.ld
 FS_C_FILES = $(wildcard $(FS_DIR)/*.c)
 INIT_C_FILES = $(wildcard $(INIT_DIR)/*.c)
@@ -27,7 +25,6 @@ KERNEL_C_FILES = $(wildcard $(KERNEL_DIR)/*.c)
 
 # Archivos de salida
 BOOT_BIN = $(BUILD_DIR)/boot.bin
-LOADER64_BIN = $(BUILD_DIR)/loader64.bin
 KERNEL_BIN = $(BUILD_DIR)/kernel.bin
 KERNEL_O_FILES = $(patsubst $(KERNEL_DIR)/%.c,$(BUILD_DIR)/kernel_%.o,$(KERNEL_C_FILES))
 FS_O_FILES = $(patsubst $(FS_DIR)/%.c,$(BUILD_DIR)/fs_%.o,$(FS_C_FILES))
@@ -47,26 +44,46 @@ all: $(OS_ISO)
 
 # --- Reglas de construcción ---
 
-# Boot sector (2048 bytes)
+# Boot sector (2048 bytes), incluye el header de sectores
+
+
+
+
+# Boot sector + loader64 unificados (6144 bytes, 3 sectores)
 $(BOOT_BIN): $(BOOT_ASM)
-	@echo "[+] Compilando boot sector..."
+	@echo "[+] Compilando boot sector + loader64..."
 	mkdir -p $(BUILD_DIR)
 	$(NASM) $(NASMFLAGS) $< -o $@
+	actual_size=$$(stat -c %s $@); \
+	if [ $$actual_size -lt 6144 ]; then \
+		pad_size=$$((6144 - $$actual_size)); \
+		dd if=/dev/zero bs=1 count=$$pad_size >> $@ 2>/dev/null; \
+	fi; \
+	truncate -s 6144 $@
 
-# Loader64 (4096 bytes)
-$(LOADER64_BIN): $(LOADER64_ASM)
-	@echo "[+] Ensamblando loader64..."
-	mkdir -p $(BUILD_DIR)
-	$(NASM) $(NASMFLAGS) $< -o $@
-	truncate -s 4096 $@
 
-# Kernel (binario plano)
+
+
+# Kernel (binario plano, solo enlazado y convertido a binario, y genera kernel_sectors.inc)
+KERNEL_SECTORS_H = $(BUILD_DIR)/kernel_sectors.inc
 $(KERNEL_BIN): $(INIT_O_FILES) $(KERNEL_O_FILES) $(FS_O_FILES)
 	@echo "[+] Enlazando kernel..."
 	mkdir -p $(BUILD_DIR)
 	$(LD) $(LDFLAGS) $^ -o $(BUILD_DIR)/kernel_temp.elf
 	$(OBJCOPY) -O binary $(BUILD_DIR)/kernel_temp.elf $@
 	rm $(BUILD_DIR)/kernel_temp.elf
+	@# Calcular sectores del kernel alineado y generar kernel_sectors.inc
+	actual_size=$$(stat -c %s $@); \
+	modulo=$$(($$actual_size % 2048)); \
+	if [ $$modulo -ne 0 ]; then \
+		pad_size=$$((2048 - $$modulo)); \
+		dd if=/dev/zero bs=1 count=$$pad_size >> $@ 2>/dev/null; \
+		actual_size=$$(($$actual_size + $$pad_size)); \
+	fi; \
+	kernel_sectors=$$(( ($$actual_size + 2047) / 2048 )); \
+	if [ $$kernel_sectors -lt 1 ]; then kernel_sectors=1; fi; \
+	echo "[i] kernel.bin ocupa $$kernel_sectors sectores (2048 bytes cada uno)"; \
+	echo "%define KERNEL_SECTORS $$kernel_sectors" > $(KERNEL_SECTORS_H)
 
 # Objetos de init
 $(BUILD_DIR)/init_%.o: $(INIT_DIR)/%.c
@@ -86,28 +103,30 @@ $(BUILD_DIR)/fs_%.o: $(FS_DIR)/%.c
 	mkdir -p $(BUILD_DIR)
 	$(GCC) $(CFLAGS) -c $< -o $@
 
-# --- ISO puro con loader64 en sector 17 (El Torito, no emulación) ---
-$(OS_ISO): $(BOOT_BIN) $(LOADER64_BIN) $(KERNEL_BIN)
-	@echo "[+] Generando ISO puro (El Torito, no emulación)..."
+
+# --- ISO con boot.bin como sector de arranque El Torito (no emulación, sin padding extra) ---
+$(OS_ISO): $(BOOT_BIN) $(KERNEL_BIN)
+	@echo "[+] Generando ISO puro (El Torito, no emulación, boot.bin directo)..."
 	rm -rf $(ISO_DIR)
 	mkdir -p $(ISO_DIR)
-	cp $< $(ISO_DIR)/boot.bin
-	dd if=/dev/zero of=$(ISO_DIR)/pad bs=2048 count=15 status=none
-	cat $(ISO_DIR)/boot.bin $(ISO_DIR)/pad $(LOADER64_BIN) > $(ISO_DIR)/bootfull.img
+	cp $(BOOT_BIN) $(ISO_DIR)/boot.bin
 	mkdir -p $(OUTPUT_DIR)
+	# El estándar El Torito requiere al menos 2048 bytes, pero BIOS solo usa los primeros 512
 	genisoimage -o $@ \
-		-b bootfull.img \
+		-b boot.bin \
 		-no-emul-boot \
-		-boot-load-size 18 \
+		-boot-load-size 4 \
 		-boot-info-table \
 		-quiet \
 		$(ISO_DIR)
-	rm $(ISO_DIR)/pad $(ISO_DIR)/bootfull.img $(ISO_DIR)/boot.bin
-	rm -rf build
 
 # --- Limpieza ---
 clean:
 	@echo "[•] Limpiando..."
 	rm -rf $(BUILD_DIR) $(OUTPUT_DIR)
 
-.PHONY: all clean
+# --- Ejecutar en QEMU ---
+run: $(OS_ISO)
+	qemu-system-x86_64 -cdrom $(OS_ISO)
+
+.PHONY: all clean run

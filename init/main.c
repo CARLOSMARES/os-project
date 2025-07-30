@@ -14,6 +14,8 @@ extern "C"
     {
         vga_initialize();
 
+        vga_clear_screen();
+
         main();
     }
 
@@ -35,7 +37,4 @@ extern "C"
 
 #ifdef __cplusplus
 }
-#endif
-
-#ifdef __cplusplus
 #endif
