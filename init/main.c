@@ -7,21 +7,21 @@ extern "C"
 {
 #endif
 
-    __attribute__((section(".text"), used)) void _start(void);
+    __attribute__((section(".entry"), used, naked)) void _start(void);
     __attribute__((used)) void main(void);
 
-    __attribute__((section(".text"), used)) void _start(void)
+    __attribute__((section(".entry"), used, naked)) void _start(void)
     {
-        vga_initialize();
 
         vga_clear_screen();
 
         main();
+
     }
 
     __attribute__((used)) void main(void)
     {
-        fs_init(); // Inicializa el sistema de archivos
+        //fs_init(); // Inicializa el sistema de archivos
         //{ Mensaje centrado usando printf y padding
         const char *msg = "MicroCIOMOS";
         unsigned int len = 12; // strlen("MicroCIOMOS")

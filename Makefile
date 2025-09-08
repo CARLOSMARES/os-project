@@ -1,11 +1,34 @@
-
 # --- Makefile limpio y robusto para OS x86_64 custom ---
 
 # Herramientas
 NASM = nasm
-GCC = x86_64-elf-gcc
-LD = x86_64-elf-ld
-OBJCOPY = x86_64-elf-objcopy
+
+# Preferir toolchain cruzado i686 (x86 32-bit)
+GCC := $(shell which i686-elf-gcc 2>/dev/null)
+LD_CROSS := $(shell which i686-elf-ld 2>/dev/null)
+OBJCOPY_CROSS := $(shell which i686-elf-objcopy 2>/dev/null)
+
+ifeq ($(GCC),)
+  GCC = gcc
+  CFLAGS_ARCH = -m32
+  $(info [!] i686-elf-gcc no encontrado; usando gcc del sistema con -m32)
+else
+  CFLAGS_ARCH =
+endif
+
+ifeq ($(LD_CROSS),)
+  LD = ld
+  LDFLAGS_ARCH = -m elf_i386
+else
+  LD = $(LD_CROSS)
+  LDFLAGS_ARCH =
+endif
+
+ifeq ($(OBJCOPY_CROSS),)
+  OBJCOPY = objcopy
+else
+  OBJCOPY = $(OBJCOPY_CROSS)
+endif
 
 # Directorios
 BOOT_DIR = boot
@@ -15,7 +38,6 @@ INIT_DIR = init
 INCLUDE_DIR = include
 BUILD_DIR = build
 OUTPUT_DIR = output
-ISO_DIR = $(BUILD_DIR)/isodir
 
 BOOT_ASM = $(BOOT_DIR)/boot.asm
 KERNEL_LD = $(KERNEL_DIR)/kernel.ld
@@ -29,60 +51,51 @@ KERNEL_BIN = $(BUILD_DIR)/kernel.bin
 KERNEL_O_FILES = $(patsubst $(KERNEL_DIR)/%.c,$(BUILD_DIR)/kernel_%.o,$(KERNEL_C_FILES))
 FS_O_FILES = $(patsubst $(FS_DIR)/%.c,$(BUILD_DIR)/fs_%.o,$(FS_C_FILES))
 INIT_O_FILES = $(patsubst $(INIT_DIR)/%.c,$(BUILD_DIR)/init_%.o,$(INIT_C_FILES))
-OS_ISO = $(OUTPUT_DIR)/os.iso
+FLOPPY_IMG = $(OUTPUT_DIR)/floppy.img
+KERNEL_SECTORS_H = $(BUILD_DIR)/kernel_sectors.inc
 
 # Flags
 CFLAGS = -ffreestanding -nostdlib -nostdinc -fno-builtin -fno-stack-protector \
-		 -mcmodel=large -mno-red-zone -mno-mmx -mno-sse -mno-sse2 \
-		 -Wall -Wextra -Os -fdata-sections -ffunction-sections \
-		 -I$(INCLUDE_DIR)
-LDFLAGS = -n -nostdlib -T $(KERNEL_LD) --gc-sections
-NASMFLAGS = -f bin
+		 -mno-mmx -mno-sse -mno-sse2 -Wall -Wextra -Os -fdata-sections -ffunction-sections \
+		 -fno-pic -I$(INCLUDE_DIR) $(CFLAGS_ARCH)
+LDFLAGS = -n -nostdlib -T $(KERNEL_LD) --gc-sections $(LDFLAGS_ARCH)
 
 # Objetivo principal
-all: $(OS_ISO)
+all: check-toolchain $(FLOPPY_IMG)
 
 # --- Reglas de construcción ---
 
-# Boot sector (2048 bytes), incluye el header de sectores
+# Chequeo de toolchain
+check-toolchain:
+	@if ! $(GCC) $(CFLAGS) -v >/dev/null 2>&1; then \
+	  echo "[!] Toolchain no soporta -m32. Instala i686-elf-gcc o gcc-multilib"; \
+	  exit 1; \
+	fi
 
-
-
-
-# Boot sector + loader64 unificados (6144 bytes, 3 sectores)
-$(BOOT_BIN): $(BOOT_ASM)
-	@echo "[+] Compilando boot sector + loader64..."
+# Boot sector (512 bytes) incluye kernel_sectors.inc
+$(BOOT_BIN): $(BOOT_ASM) $(KERNEL_BIN) $(KERNEL_SECTORS_H)
+	@echo "[+] Compilando boot sector..."
 	mkdir -p $(BUILD_DIR)
-	$(NASM) $(NASMFLAGS) $< -o $@
-	actual_size=$$(stat -c %s $@); \
-	if [ $$actual_size -lt 6144 ]; then \
-		pad_size=$$((6144 - $$actual_size)); \
-		dd if=/dev/zero bs=1 count=$$pad_size >> $@ 2>/dev/null; \
-	fi; \
-	truncate -s 6144 $@
+	$(NASM) -f bin -I $(BUILD_DIR)/ $< -o $@
 
-
-
-
-# Kernel (binario plano, solo enlazado y convertido a binario, y genera kernel_sectors.inc)
-KERNEL_SECTORS_H = $(BUILD_DIR)/kernel_sectors.inc
+# Kernel (binario plano) y generar kernel_sectors.inc (sectores de 512 bytes)
 $(KERNEL_BIN): $(INIT_O_FILES) $(KERNEL_O_FILES) $(FS_O_FILES)
 	@echo "[+] Enlazando kernel..."
 	mkdir -p $(BUILD_DIR)
 	$(LD) $(LDFLAGS) $^ -o $(BUILD_DIR)/kernel_temp.elf
 	$(OBJCOPY) -O binary $(BUILD_DIR)/kernel_temp.elf $@
 	rm $(BUILD_DIR)/kernel_temp.elf
-	@# Calcular sectores del kernel alineado y generar kernel_sectors.inc
+	@# Calcular sectores del kernel (512B) y generar kernel_sectors.inc
 	actual_size=$$(stat -c %s $@); \
-	modulo=$$(($$actual_size % 2048)); \
-	if [ $$modulo -ne 0 ]; then \
-		pad_size=$$((2048 - $$modulo)); \
+	mod512=$$(( $$actual_size % 512 )); \
+	if [ $$mod512 -ne 0 ]; then \
+		pad_size=$$((512 - $$mod512)); \
 		dd if=/dev/zero bs=1 count=$$pad_size >> $@ 2>/dev/null; \
-		actual_size=$$(($$actual_size + $$pad_size)); \
+		actual_size=$$(( $$actual_size + $$pad_size )); \
 	fi; \
-	kernel_sectors=$$(( ($$actual_size + 2047) / 2048 )); \
+	kernel_sectors=$$(( ($$actual_size + 511) / 512 )); \
 	if [ $$kernel_sectors -lt 1 ]; then kernel_sectors=1; fi; \
-	echo "[i] kernel.bin ocupa $$kernel_sectors sectores (2048 bytes cada uno)"; \
+	echo "[i] kernel.bin ocupa $$kernel_sectors sectores (512 bytes cada uno)"; \
 	echo "%define KERNEL_SECTORS $$kernel_sectors" > $(KERNEL_SECTORS_H)
 
 # Objetos de init
@@ -103,30 +116,25 @@ $(BUILD_DIR)/fs_%.o: $(FS_DIR)/%.c
 	mkdir -p $(BUILD_DIR)
 	$(GCC) $(CFLAGS) -c $< -o $@
 
-
-# --- ISO con boot.bin como sector de arranque El Torito (no emulación, sin padding extra) ---
-$(OS_ISO): $(BOOT_BIN) $(KERNEL_BIN)
-	@echo "[+] Generando ISO puro (El Torito, no emulación, boot.bin directo)..."
-	rm -rf $(ISO_DIR)
-	mkdir -p $(ISO_DIR)
-	cp $(BOOT_BIN) $(ISO_DIR)/boot.bin
+# --- Imagen de disquete 1.44MB: sector 0 = boot, sector 1.. = kernel ---
+$(FLOPPY_IMG): $(BOOT_BIN) $(KERNEL_BIN)
+	@echo "[+] Construyendo imagen de disquete 1.44MB..."
 	mkdir -p $(OUTPUT_DIR)
-	# El estándar El Torito requiere al menos 2048 bytes, pero BIOS solo usa los primeros 512
-	genisoimage -o $@ \
-		-b boot.bin \
-		-no-emul-boot \
-		-boot-load-size 4 \
-		-boot-info-table \
-		-quiet \
-		$(ISO_DIR)
+	dd if=/dev/zero of=$@ bs=1024 count=1440 status=none
+	dd if=$(BOOT_BIN) of=$@ bs=512 count=1 conv=notrunc status=none
+	dd if=$(KERNEL_BIN) of=$@ bs=512 seek=1 conv=notrunc status=none
 
 # --- Limpieza ---
-clean:
-	@echo "[•] Limpiando..."
-	rm -rf $(BUILD_DIR) $(OUTPUT_DIR)
+clean-build:
+	@echo "[•] Limpiando build..."
+	rm -rf $(BUILD_DIR)
+
+clean-all: clean-build
+	@echo "[•] Limpiando todo..."
+	rm -rf $(OUTPUT_DIR)
 
 # --- Ejecutar en QEMU ---
-run: $(OS_ISO)
-	qemu-system-x86_64 -cdrom $(OS_ISO)
+run: $(FLOPPY_IMG)
+	qemu-system-x86_64 -drive format=raw,file=$(FLOPPY_IMG),if=floppy -boot a -m 128M -accel tcg
 
-.PHONY: all clean run
+.PHONY: all clean-build clean-all run check-toolchain

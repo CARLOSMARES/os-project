@@ -2,8 +2,14 @@ ENTRY(_start)
 
 SECTIONS
 {
-  /* Kernel cargado en 0x11000 (debe coincidir con el salto del loader64) */
-  . = 0x11000;
+  /* Kernel cargado en 0x8000 (coincide con el salto del bootloader) */
+  . = 0x8000;
+
+  /* Colocar el entry justo al inicio del binario */
+  .entry :
+  {
+    KEEP(*(.entry))
+  }
 
   .text ALIGN(4K) :
   {
