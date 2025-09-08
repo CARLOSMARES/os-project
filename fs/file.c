@@ -29,6 +29,22 @@ static void init_file_table(void)
 }
 
 /**
+ * Garantiza que el FS esté inicializado y formateado si es necesario
+ */
+static int ensure_fs_initialized(void)
+{
+    if (!fs_is_ready()) // <- usa tu flag global fs_initialized o función similar
+    {
+        if (fs_init() != 0)
+        {
+            printf("Error: no se pudo inicializar el FS\n");
+            return -1;
+        }
+    }
+    return 0;
+}
+
+/**
  * Busca un descriptor de archivo libre
  */
 static int find_free_fd(void)
@@ -49,6 +65,9 @@ static int find_free_fd(void)
 int file_open(const char *filename, uint32_t flags)
 {
     if (!filename)
+        return -1;
+
+    if (ensure_fs_initialized() != 0)
         return -1;
 
     init_file_table();
@@ -147,6 +166,9 @@ int file_close(int fd)
  */
 int file_read(int fd, void *buffer, uint32_t count)
 {
+    if (ensure_fs_initialized() != 0)
+        return -1;
+
     if (fd < 0 || fd >= MAX_OPEN_FILES || !file_table[fd].is_open || !buffer)
     {
         return -1;
@@ -198,7 +220,6 @@ int file_read(int fd, void *buffer, uint32_t count)
         {
             block_num = file_inode->blocks[block_index];
         }
-        // TODO: Implementar bloques indirectos para archivos grandes
 
         if (block_num == 0)
         {
@@ -231,6 +252,9 @@ int file_read(int fd, void *buffer, uint32_t count)
  */
 int file_write(int fd, const void *buffer, uint32_t count)
 {
+    if (ensure_fs_initialized() != 0)
+        return -1;
+
     if (fd < 0 || fd >= MAX_OPEN_FILES || !file_table[fd].is_open || !buffer)
     {
         return -1;
@@ -286,7 +310,6 @@ int file_write(int fd, const void *buffer, uint32_t count)
                 }
             }
         }
-        // TODO: Implementar bloques indirectos para archivos grandes
 
         if (block_num == 0)
         {
@@ -319,6 +342,9 @@ int file_write(int fd, const void *buffer, uint32_t count)
  */
 int file_seek(int fd, uint32_t offset, int whence)
 {
+    if (ensure_fs_initialized() != 0)
+        return -1;
+
     if (fd < 0 || fd >= MAX_OPEN_FILES || !file_table[fd].is_open)
     {
         return -1;
@@ -383,27 +409,17 @@ int file_eof(int fd)
     return file_table[fd].position >= file_inode->size;
 }
 
-// Funciones adicionales para compatibilidad con el sistema de archivos
-
-/**
- * Abre un archivo (wrapper de fs)
- */
+// --- Wrappers para compatibilidad con FS ---
 int fs_open_file(const char *filename)
 {
     return file_open(filename, O_RDWR);
 }
 
-/**
- * Cierra un archivo (wrapper de fs)
- */
 int fs_close_file(int fd)
 {
     return file_close(fd);
 }
 
-/**
- * Lee de un archivo con offset específico
- */
 int fs_read_file(int fd, void *buffer, uint32_t size, uint32_t offset)
 {
     if (file_seek(fd, offset, SEEK_SET) == -1)
@@ -413,9 +429,6 @@ int fs_read_file(int fd, void *buffer, uint32_t size, uint32_t offset)
     return file_read(fd, buffer, size);
 }
 
-/**
- * Escribe en un archivo con offset específico
- */
 int fs_write_file(int fd, const void *buffer, uint32_t size, uint32_t offset)
 {
     if (file_seek(fd, offset, SEEK_SET) == -1)

@@ -1,5 +1,3 @@
-#include "../include/stdio.h"
-#include "../include/vga_color.h"
 #include "../include/fs.h"
 
 #ifdef __cplusplus
@@ -7,32 +5,14 @@ extern "C"
 {
 #endif
 
-    __attribute__((section(".entry"), used, naked)) void _start(void);
-    __attribute__((used)) void main(void);
+    // Declaración externa de kernel_main
+    extern void kernel_main(void);
 
+    // Punto de entrada del kernel
     __attribute__((section(".entry"), used, naked)) void _start(void)
     {
-
-        vga_clear_screen();
-
-        main();
-
-    }
-
-    __attribute__((used)) void main(void)
-    {
-        //fs_init(); // Inicializa el sistema de archivos
-        //{ Mensaje centrado usando printf y padding
-        const char *msg = "MicroCIOMOS";
-        unsigned int len = 12; // strlen("MicroCIOMOS")
-        unsigned int col = (80 - len) / 2;
-        for (unsigned int i = 0; i < col; ++i)
-            putchar(' ');
-        printf("%s\n", msg);
-        while (1)
-        {
-            __asm__ volatile("hlt");
-        }
+        fs_init();     // Inicializa el sistema de archivos mínimo necesario
+        kernel_main(); // Llama directamente al kernel principal
     }
 
 #ifdef __cplusplus
