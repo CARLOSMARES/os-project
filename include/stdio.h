@@ -30,12 +30,6 @@ int printf(const char *format, ...);
 int sprintf(char *str, const char *format, ...);
 int snprintf(char *str, size_t size, const char *format, ...);
 
-// Funciones auxiliares para conversión
-int itoa(int value, char *str, int base);
-int uitoa(unsigned int value, char *str, int base);
-int ltoa(long value, char *str, int base);
-int ultoa(unsigned long value, char *str, int base);
-
 // Funciones de cadenas básicas
 // size_t strlen(const char *str);
 // char *strcpy(char *dest, const char *src);

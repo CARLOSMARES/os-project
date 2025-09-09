@@ -11,7 +11,7 @@ static inode_bitmap_t inode_bitmap;
 static inode_t inodes[MAX_FILES];
 
 // Driver AHCI global
-extern ahci_device_t ahci_dev;
+extern ahci_device_t *ahci_dev = NULL;
 
 // Flag de inicialización
 static uint8_t fs_initialized = 0;

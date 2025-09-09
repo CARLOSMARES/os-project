@@ -1,45 +1,51 @@
+/* kernel/kernel.ld - Linker script para kernel x86 32-bit */
+
 ENTRY(_start)
 
 SECTIONS
 {
-  /* Kernel cargado en 0x8000 (coincide con el salto del bootloader) */
-  . = 0x8000;
+    /* Dirección de carga del kernel (coincide con tu bootloader: 0x8000) */
+    . = 0x8000;
 
-  /* Colocar el entry justo al inicio del binario */
-  .entry :
-  {
-    KEEP(*(.entry))
-  }
+    /* Entrada principal del kernel */
+    .entry :
+    {
+        KEEP(*(.entry))
+    }
 
-  .text ALIGN(4K) :
-  {
-    *(.text*)
-  }
+    /* Código ejecutable del kernel */
+    .text ALIGN(4K) :
+    {
+        *(.text*)
+    }
 
-  .rodata ALIGN(4K) :
-  {
-    *(.rodata*)
-  }
+    /* Datos de solo lectura */
+    .rodata ALIGN(4K) :
+    {
+        *(.rodata*)
+    }
 
-  .data ALIGN(4K) :
-  {
-    *(.data*)
-  }
+    /* Datos inicializados */
+    .data ALIGN(4K) :
+    {
+        *(.data*)
+    }
 
-  .bss ALIGN(4K) :
-  {
-    *(COMMON)
-    *(.bss*)
-  }
+    /* BSS: datos no inicializados */
+    .bss ALIGN(4K) :
+    {
+        *(COMMON)
+        *(.bss*)
+    }
 
-  /* Secciones adicionales para 64 bits */
-  .eh_frame ALIGN(4K) :
-  {
-    *(.eh_frame*)
-  }
+    /* Secciones opcionales para compatibilidad con C++ */
+    .eh_frame ALIGN(4K) :
+    {
+        *(.eh_frame*)
+    }
 
-  .gcc_except_table ALIGN(4K) :
-  {
-    *(.gcc_except_table*)
-  }
+    .gcc_except_table ALIGN(4K) :
+    {
+        *(.gcc_except_table*)
+    }
 }

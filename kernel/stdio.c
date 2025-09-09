@@ -2,11 +2,14 @@
 #include "string.h"
 #include "stdint.h"
 #include "sys/types.h"
+#include "string.h"
 
 // Variables globales para VGA (definidas en vga_color.c)
 extern uint16_t *vga_buffer;
 extern int vga_row, vga_col;
 extern uint8_t vga_color;
+
+#define PRINTF_BUFFER_SIZE 1024
 
 // Streams estándar simulados
 FILE stdin_file = {0, 0, 0};
@@ -48,15 +51,6 @@ int getchar(void)
     // TODO: Implementar entrada de teclado cuando esté disponible
     return -1;
 }
-
-// ============================================================================
-// FUNCIONES DE CONVERSIÓN DE NÚMEROS
-// ============================================================================
-
-int itoa(int value, char *str, int base);
-int uitoa(unsigned int value, char *str, int base);
-int ltoa(long value, char *str, int base);
-int ultoa(unsigned long value, char *str, int base);
 
 // ============================================================================
 // IMPLEMENTACIÓN BÁSICA DE PRINTF

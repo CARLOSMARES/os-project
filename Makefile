@@ -1,4 +1,4 @@
-# --- Makefile para OS x86_64 con subdirectorios y disquete ---
+# --- Makefile para OS x86 32-bit ---
 
 # Toolchain
 CROSS   = i686-elf-
@@ -19,35 +19,34 @@ else
     LDFLAGS_ARCH =
 endif
 
-# Flags de compilación
+# Flags
 CFLAGS  = -ffreestanding -O2 -Wall -Wextra -fno-stack-protector -Iinclude $(CFLAGS_ARCH)
 LDFLAGS = -n -nostdlib -T kernel/kernel.ld --gc-sections $(LDFLAGS_ARCH)
 
 # Directorios
-KERNEL_DIR = kernel
-FS_DIR     = fs
-INIT_DIR   = init
-BOOT_DIR   = boot
 BUILD_DIR  = build
 OUTPUT_DIR = output
 
-# Archivos fuente
-KERNEL_SRC = $(wildcard $(KERNEL_DIR)/*.c) \
-             $(wildcard $(KERNEL_DIR)/lib/*.c) \
-             $(wildcard $(KERNEL_DIR)/drivers/*.c) \
-             $(wildcard $(KERNEL_DIR)/arch/x86/*.c)
-FS_SRC     = $(wildcard $(FS_DIR)/*.c)
-INIT_SRC   = $(wildcard $(INIT_DIR)/*.c)
-BOOT_ASM   = $(BOOT_DIR)/boot.asm
+# Subdirectorios de build
+SUBDIRS = $(BUILD_DIR) \
+          $(BUILD_DIR)/kernel \
+          $(BUILD_DIR)/fs \
+          $(BUILD_DIR)/init
+
+# Fuentes
+KERNEL_SRC := $(shell find kernel -name '*.c')
+FS_SRC     := $(shell find fs -name '*.c')
+INIT_SRC   := $(shell find init -name '*.c')
+BOOT_ASM   := boot/boot.asm
+IDT_ASM    := kernel/arch/x86/idt_stubs.s
 
 # Objetos
-KERNEL_OBJ = $(patsubst $(KERNEL_DIR)/%.c,$(BUILD_DIR)/kernel_%.o,$(filter-out $(KERNEL_DIR)/arch/x86/idt.c,$(KERNEL_SRC)))
-KERNEL_OBJ += $(patsubst $(KERNEL_DIR)/lib/%.c,$(BUILD_DIR)/kernel_lib_%.o,$(wildcard $(KERNEL_DIR)/lib/*.c))
-KERNEL_OBJ += $(patsubst $(KERNEL_DIR)/drivers/%.c,$(BUILD_DIR)/kernel_drv_%.o,$(wildcard $(KERNEL_DIR)/drivers/*.c))
-KERNEL_OBJ += $(patsubst $(KERNEL_DIR)/arch/x86/%.c,$(BUILD_DIR)/kernel_arch_%.o,$(wildcard $(KERNEL_DIR)/arch/x86/*.c))
-FS_OBJ     = $(patsubst $(FS_DIR)/%.c,$(BUILD_DIR)/fs_%.o,$(FS_SRC))
-INIT_OBJ   = $(patsubst $(INIT_DIR)/%.c,$(BUILD_DIR)/init_%.o,$(INIT_SRC))
-OBJS       = $(KERNEL_OBJ) $(FS_OBJ) $(INIT_OBJ)
+KERNEL_OBJ := $(patsubst %.c,$(BUILD_DIR)/%.o,$(KERNEL_SRC))
+FS_OBJ     := $(patsubst %.c,$(BUILD_DIR)/%.o,$(FS_SRC))
+INIT_OBJ   := $(patsubst %.c,$(BUILD_DIR)/%.o,$(INIT_SRC))
+STUBS_OBJ  := $(BUILD_DIR)/idt_stubs.o
+
+OBJS       := $(KERNEL_OBJ) $(FS_OBJ) $(INIT_OBJ) $(STUBS_OBJ)
 
 # Output
 KERNEL_ELF = $(BUILD_DIR)/kernel.elf
@@ -56,49 +55,38 @@ BOOT_BIN   = $(BUILD_DIR)/boot.bin
 FLOPPY_IMG = $(OUTPUT_DIR)/floppy.img
 KERNEL_SECTORS_H = $(BUILD_DIR)/kernel_sectors.inc
 
-# --- Subdirectorios en build ---
-SUBDIRS = $(BUILD_DIR) \
-          $(BUILD_DIR)/kernel_lib \
-          $(BUILD_DIR)/kernel_drivers \
-          $(BUILD_DIR)/kernel_arch \
-          $(BUILD_DIR)/fs \
-          $(BUILD_DIR)/init
-
+# Crear subdirectorios
 $(BUILD_DIR):
 	mkdir -p $(SUBDIRS)
 
 $(OUTPUT_DIR):
 	mkdir -p $(OUTPUT_DIR)
 
-# --- Regla principal ---
+# Regla principal
 all: $(FLOPPY_IMG)
 
-# Compilar kernel
-$(BUILD_DIR)/kernel_%.o: $(KERNEL_DIR)/%.c | $(BUILD_DIR)
+# Compilar C a objetos
+$(BUILD_DIR)/%.o: %.c | $(BUILD_DIR)
+	mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -c $< -o $@
 
-$(BUILD_DIR)/kernel_lib_%.o: $(KERNEL_DIR)/lib/%.c | $(BUILD_DIR)
-	$(CC) $(CFLAGS) -c $< -o $@
+# Compilar stubs ASM
+$(STUBS_OBJ): $(IDT_ASM) | $(BUILD_DIR)
+	$(NASM) -f elf32 $< -o $@
 
-$(BUILD_DIR)/kernel_drv_%.o: $(KERNEL_DIR)/drivers/%.c | $(BUILD_DIR)
-	$(CC) $(CFLAGS) -c $< -o $@
-
-$(BUILD_DIR)/kernel_arch_%.o: $(KERNEL_DIR)/arch/x86/%.c | $(BUILD_DIR)
-	$(CC) $(CFLAGS) -c $< -o $@
-
-# Compilar FS
-$(BUILD_DIR)/fs_%.o: $(FS_DIR)/%.c | $(BUILD_DIR)
-	$(CC) $(CFLAGS) -c $< -o $@
-
-# Compilar INIT
-$(BUILD_DIR)/init_%.o: $(INIT_DIR)/%.c | $(BUILD_DIR)
-	$(CC) $(CFLAGS) -c $< -o $@
-
-# Bootloader
+# Compilar bootloader
 $(BOOT_BIN): $(BOOT_ASM) $(KERNEL_SECTORS_H) | $(BUILD_DIR)
 	$(NASM) -f bin $< -o $@
 
-# Generar kernel_sectors.inc
+# Enlazar kernel
+$(KERNEL_ELF): $(OBJS)
+	$(LD) $(LDFLAGS) $^ -o $@
+
+# Convertir a binario plano
+$(KERNEL_BIN): $(KERNEL_ELF)
+	$(OBJCOPY) -O binary $< $@
+
+# Generar kernel_sectors.inc para el bootloader
 $(KERNEL_SECTORS_H): $(KERNEL_BIN)
 	actual_size=$$(stat -c %s $<); \
 	mod512=$$(( $$actual_size % 512 )); \
@@ -109,14 +97,6 @@ $(KERNEL_SECTORS_H): $(KERNEL_BIN)
 	fi; \
 	kernel_sectors=$$(( ($$actual_size + 511) / 512 )); \
 	echo "%define KERNEL_SECTORS $$kernel_sectors" > $@
-
-# Enlazar kernel
-$(KERNEL_ELF): $(OBJS)
-	$(LD) $(LDFLAGS) $^ -o $@
-
-# Convertir a binario plano
-$(KERNEL_BIN): $(KERNEL_ELF)
-	$(OBJCOPY) -O binary $< $@
 
 # Crear imagen de disquete
 $(FLOPPY_IMG): $(BOOT_BIN) $(KERNEL_BIN) | $(OUTPUT_DIR)

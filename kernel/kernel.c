@@ -3,8 +3,10 @@
 #include "timer.h"
 #include "keyboard.h"
 
+extern void idt_init(void);
 extern void isr_init(void);
 extern void irq_init(void);
+extern void pic_remap(void);
 
 void kernel_main(void)
 {
