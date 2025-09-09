@@ -1,8 +1,8 @@
 // kernel/pci.c
-#include "../include/pci.h"
-#include "../include/io.h"
-#include "../include/stdint.h"
-#include "../include/stdio.h" // si tienes printf en kernel; si no, elimina las prints
+#include "pci.h"
+#include "io.h"
+#include "stdint.h"
+#include "stdio.h" // si tienes printf en kernel; si no, elimina las prints
 
 /* I/O ports for legacy PCI config */
 #define PCI_CONFIG_ADDRESS 0xCF8

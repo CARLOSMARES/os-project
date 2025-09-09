@@ -1,4 +1,4 @@
-#include "../include/fs.h"
+#include "fs.h"
 
 #ifdef __cplusplus
 extern "C"

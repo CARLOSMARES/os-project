@@ -16,7 +16,7 @@
 #define VGA_COLOR_LIGHT_BROWN 14
 #define VGA_COLOR_WHITE 15
 
-#include "../include/stdint.h"
+#include "stdint.h"
 
 // Constantes de VGA
 #define VGA_WIDTH 80

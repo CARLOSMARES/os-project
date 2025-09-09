@@ -1,5 +1,5 @@
-#include "../include/fs.h"
-#include "../include/stdio.h"
+#include "fs.h"
+#include "stdio.h"
 
 // Variables globales del sistema de archivos
 static superblock_t superblock;

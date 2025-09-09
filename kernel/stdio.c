@@ -1,7 +1,7 @@
-#include "../include/stdio.h"
-#include "../include/string.h"
-#include "../include/stdint.h"
-#include "../include/sys/types.h"
+#include "stdio.h"
+#include "string.h"
+#include "stdint.h"
+#include "sys/types.h"
 
 // Variables globales para VGA (definidas en vga_color.c)
 extern uint16_t *vga_buffer;

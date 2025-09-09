@@ -1,8 +1,8 @@
-#include "../include/fs.h"
-#include "../include/ahci.h"
-#include "../include/stdio.h"
-#include "../include/string.h"
-#include "../include/file.h"
+#include "fs.h"
+#include "ahci.h"
+#include "stdio.h"
+#include "string.h"
+#include "file.h"
 
 // Variables globales del sistema de archivos
 static superblock_t superblock;

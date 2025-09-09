@@ -1,7 +1,7 @@
-#include "../include/ahci.h"
-#include "../include/pci.h"
-#include "../include/stdio.h"
-#include "../include/stdint.h"
+#include "ahci.h"
+#include "pci.h"
+#include "stdio.h"
+#include "stdint.h"
 
 // Para simplificar, solo un dispositivo
 static ahci_device_t ahci_dev;
@@ -10,7 +10,8 @@ static ahci_device_t ahci_dev;
 int ahci_init(ahci_device_t *dev)
 {
     pci_device_t pci_dev;
-    if (pci_find_ahci(&pci_dev) != 0) {
+    if (pci_find_ahci(&pci_dev) != 0)
+    {
         printf("AHCI no encontrado\n");
         return -1;
     }
