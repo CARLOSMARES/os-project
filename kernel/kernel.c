@@ -1,62 +1,44 @@
-#include "../include/stdio.h"
-#include "../include/stdint.h"
-#include "../include/pci.h"
-#include "../include/vga_color.h"
-#include "../include/ahci.h"
+#include "log.h"
+#include "idt.h"
+#include "timer.h"
+#include "keyboard.h"
 
-// Declaraciones externas de funciones VGA
-extern void vga_set_color(uint8_t color);
-extern void vga_clear_screen(void);
+extern void isr_init(void);
+extern void irq_init(void);
 
 void kernel_main(void)
 {
-    vga_clear_screen();
-    vga_set_color(0x0A); // Verde claro
+    serial_init();
+    KLOG_INFO("MicroCIOMOS booting...");
 
-    for (int i = 1; i <= 20; i++)
-        printf("\n");
+    pic_remap();
+    isr_init(); // si hoy no tienes, basta con declarar/llamar y luego idt_init usa stubs
+    irq_init();
+    idt_init();
 
-    printf("\t\t\t\t\t\t\t\t\t MicroCIOMOS\n");
+    pit_init(100); // 100Hz
 
-    // --- PCI / AHCI ---
-    ahci_device_t dev;
-    if (ahci_init(&dev) == 0)
+    keyboard_init();
+
+    // habilitar interrupciones
+    __asm__ volatile("sti");
+
+    KLOG_INFO("Kernel up. Waiting for IRQs...");
+
+    for (;;)
     {
-        printf("AHCI inicializado correctamente\n");
-        printf("BAR5 = 0x%llx, Puerto = %u\n", (unsigned long long)dev.bar5, dev.port);
-
-        // Ejemplo de lectura de bloque 0
-        uint8_t read_buffer[AHCI_BLOCK_SIZE];
-        if (ahci_read_block(&dev, 0, read_buffer) == 0)
+        int sc = keyboard_read_scancode();
+        if (sc >= 0)
+            KLOG_INFO("kbd scancode=0x%x", (unsigned)sc);
+        // opcional: cada ~100ms loggear ticks
+        static uint64_t last = 0;
+        extern uint64_t timer_ticks(void);
+        uint64_t t = timer_ticks();
+        if (t - last >= 100)
         {
-            printf("Bloque 0 leído correctamente\n");
+            last = t;
+            KLOG_INFO("ticks=%llu", (unsigned long long)t);
         }
-        else
-        {
-            printf("Error leyendo bloque 0\n");
-        }
-
-        // Ejemplo de escritura de bloque 1
-        uint8_t write_buffer[AHCI_BLOCK_SIZE];
-        for (int i = 0; i < AHCI_BLOCK_SIZE; i++)
-            write_buffer[i] = i % 256;
-
-        if (ahci_write_block(&dev, 1, write_buffer) == 0)
-        {
-            printf("Bloque 1 escrito correctamente\n");
-        }
-        else
-        {
-            printf("Error escribiendo bloque 1\n");
-        }
-    }
-    else
-    {
-        printf("No se encontró controlador AHCI en PCI\n");
-    }
-
-    while (1)
-    {
-        __asm__ volatile("hlt"); // Espera sin consumir CPU
+        __asm__ volatile("hlt");
     }
 }

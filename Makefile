@@ -59,7 +59,7 @@ KERNEL_SECTORS_H = $(BUILD_DIR)/kernel_sectors.inc
 # Flags
 CFLAGS = -ffreestanding -nostdlib -nostdinc -fno-builtin -fno-stack-protector \
          -mno-mmx -mno-sse -mno-sse2 -Wall -Wextra -Os -fdata-sections -ffunction-sections \
-         -fno-pic -I$(INCLUDE_DIR) $(CFLAGS_ARCH)
+         -fno-pic -I$(INCLUDE_DIR) $(CFLAGS_ARCH) -MMD -MP
 LDFLAGS = -n -nostdlib -T $(KERNEL_LD) --gc-sections $(LDFLAGS_ARCH)
 
 # Objetivo principal
@@ -86,18 +86,22 @@ $(KERNEL_BIN): $(INIT_O_FILES) $(KERNEL_O_FILES) $(FS_O_FILES)
 	$(LD) $(LDFLAGS) $^ -o $(BUILD_DIR)/kernel_temp.elf
 	$(OBJCOPY) -O binary $(BUILD_DIR)/kernel_temp.elf $@
 	rm $(BUILD_DIR)/kernel_temp.elf
-	@# Generar kernel_sectors.inc
-	actual_size=$$(stat -c %s $@); \
+	$(MAKE) $(KERNEL_SECTORS_H)
+
+# kernel_sectors.inc
+$(KERNEL_SECTORS_H): $(KERNEL_BIN)
+	@echo "[+] Generando kernel_sectors.inc..."
+	actual_size=$$(stat -c %s $(KERNEL_BIN)); \
 	mod512=$$(( $$actual_size % 512 )); \
 	if [ $$mod512 -ne 0 ]; then \
 		pad_size=$$((512 - $$mod512)); \
-		dd if=/dev/zero bs=1 count=$$pad_size >> $@ 2>/dev/null; \
+		dd if=/dev/zero bs=1 count=$$pad_size >> $(KERNEL_BIN) 2>/dev/null; \
 		actual_size=$$(( $$actual_size + $$pad_size )); \
 	fi; \
 	kernel_sectors=$$(( ($$actual_size + 511) / 512 )); \
 	if [ $$kernel_sectors -lt 1 ]; then kernel_sectors=1; fi; \
 	echo "[i] kernel.bin ocupa $$kernel_sectors sectores (512 bytes)"; \
-	echo "%define KERNEL_SECTORS $$kernel_sectors" > $(KERNEL_SECTORS_H)
+	echo "%define KERNEL_SECTORS $$kernel_sectors" > $@
 
 # Objetos init
 $(BUILD_DIR)/init_%.o: $(INIT_DIR)/%.c
@@ -138,4 +142,10 @@ clean-all: clean-build
 run: $(FLOPPY_IMG)
 	qemu-system-x86_64 -drive format=raw,file=$(FLOPPY_IMG),if=floppy -boot a -m 128M -accel tcg
 
-.PHONY: all clean-build clean-all run check-toolchain
+debug: $(FLOPPY_IMG)
+	qemu-system-x86_64 -s -S -drive format=raw,file=$(FLOPPY_IMG),if=floppy -boot a -m 128M -accel tcg
+
+# Incluir dependencias auto-generadas (.d)
+-include $(BUILD_DIR)/*.d
+
+.PHONY: all clean-build clean-all run debug check-toolchain
