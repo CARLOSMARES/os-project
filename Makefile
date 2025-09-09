@@ -1,4 +1,4 @@
-# --- Makefile limpio y robusto para OS x86_64 custom ---
+# --- Makefile robusto para OS x86_64 custom con string.c ---
 
 # Herramientas
 NASM = nasm
@@ -41,9 +41,11 @@ OUTPUT_DIR = output
 
 BOOT_ASM = $(BOOT_DIR)/boot.asm
 KERNEL_LD = $(KERNEL_DIR)/kernel.ld
+
+# Archivos fuente
 FS_C_FILES = $(wildcard $(FS_DIR)/*.c)
 INIT_C_FILES = $(wildcard $(INIT_DIR)/*.c)
-KERNEL_C_FILES = $(wildcard $(KERNEL_DIR)/*.c)
+KERNEL_C_FILES = $(wildcard $(KERNEL_DIR)/*.c) $(KERNEL_DIR)/string.c
 
 # Archivos de salida
 BOOT_BIN = $(BUILD_DIR)/boot.bin
@@ -56,8 +58,8 @@ KERNEL_SECTORS_H = $(BUILD_DIR)/kernel_sectors.inc
 
 # Flags
 CFLAGS = -ffreestanding -nostdlib -nostdinc -fno-builtin -fno-stack-protector \
-		 -mno-mmx -mno-sse -mno-sse2 -Wall -Wextra -Os -fdata-sections -ffunction-sections \
-		 -fno-pic -I$(INCLUDE_DIR) $(CFLAGS_ARCH)
+         -mno-mmx -mno-sse -mno-sse2 -Wall -Wextra -Os -fdata-sections -ffunction-sections \
+         -fno-pic -I$(INCLUDE_DIR) $(CFLAGS_ARCH)
 LDFLAGS = -n -nostdlib -T $(KERNEL_LD) --gc-sections $(LDFLAGS_ARCH)
 
 # Objetivo principal
@@ -65,27 +67,26 @@ all: check-toolchain $(FLOPPY_IMG)
 
 # --- Reglas de construcción ---
 
-# Chequeo de toolchain
 check-toolchain:
 	@if ! $(GCC) $(CFLAGS) -v >/dev/null 2>&1; then \
 	  echo "[!] Toolchain no soporta -m32. Instala i686-elf-gcc o gcc-multilib"; \
 	  exit 1; \
 	fi
 
-# Boot sector (512 bytes) incluye kernel_sectors.inc
+# Boot sector (512 bytes)
 $(BOOT_BIN): $(BOOT_ASM) $(KERNEL_BIN) $(KERNEL_SECTORS_H)
 	@echo "[+] Compilando boot sector..."
 	mkdir -p $(BUILD_DIR)
 	$(NASM) -f bin -I $(BUILD_DIR)/ $< -o $@
 
-# Kernel (binario plano) y generar kernel_sectors.inc (sectores de 512 bytes)
+# Kernel binario plano + kernel_sectors.inc
 $(KERNEL_BIN): $(INIT_O_FILES) $(KERNEL_O_FILES) $(FS_O_FILES)
 	@echo "[+] Enlazando kernel..."
 	mkdir -p $(BUILD_DIR)
 	$(LD) $(LDFLAGS) $^ -o $(BUILD_DIR)/kernel_temp.elf
 	$(OBJCOPY) -O binary $(BUILD_DIR)/kernel_temp.elf $@
 	rm $(BUILD_DIR)/kernel_temp.elf
-	@# Calcular sectores del kernel (512B) y generar kernel_sectors.inc
+	@# Generar kernel_sectors.inc
 	actual_size=$$(stat -c %s $@); \
 	mod512=$$(( $$actual_size % 512 )); \
 	if [ $$mod512 -ne 0 ]; then \
@@ -95,28 +96,28 @@ $(KERNEL_BIN): $(INIT_O_FILES) $(KERNEL_O_FILES) $(FS_O_FILES)
 	fi; \
 	kernel_sectors=$$(( ($$actual_size + 511) / 512 )); \
 	if [ $$kernel_sectors -lt 1 ]; then kernel_sectors=1; fi; \
-	echo "[i] kernel.bin ocupa $$kernel_sectors sectores (512 bytes cada uno)"; \
+	echo "[i] kernel.bin ocupa $$kernel_sectors sectores (512 bytes)"; \
 	echo "%define KERNEL_SECTORS $$kernel_sectors" > $(KERNEL_SECTORS_H)
 
-# Objetos de init
+# Objetos init
 $(BUILD_DIR)/init_%.o: $(INIT_DIR)/%.c
 	@echo "[+] Compilando init $<..."
 	mkdir -p $(BUILD_DIR)
 	$(GCC) $(CFLAGS) -c $< -o $@
 
-# Objetos de kernel
+# Objetos kernel
 $(BUILD_DIR)/kernel_%.o: $(KERNEL_DIR)/%.c
 	@echo "[+] Compilando kernel $<..."
 	mkdir -p $(BUILD_DIR)
 	$(GCC) $(CFLAGS) -c $< -o $@
 
-# Objetos de fs
+# Objetos fs
 $(BUILD_DIR)/fs_%.o: $(FS_DIR)/%.c
 	@echo "[+] Compilando fs $<..."
 	mkdir -p $(BUILD_DIR)
 	$(GCC) $(CFLAGS) -c $< -o $@
 
-# --- Imagen de disquete 1.44MB: sector 0 = boot, sector 1.. = kernel ---
+# Imagen de disquete 1.44MB
 $(FLOPPY_IMG): $(BOOT_BIN) $(KERNEL_BIN)
 	@echo "[+] Construyendo imagen de disquete 1.44MB..."
 	mkdir -p $(OUTPUT_DIR)
