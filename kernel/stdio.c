@@ -31,6 +31,8 @@ extern void vga_clear_screen(void);
 int putchar(int c)
 {
     vga_putchar((char)c);
+    extern void serial_write_char(char c);
+    serial_write_char((char)c);
     return c;
 }
 

@@ -1,29 +1,9 @@
 #include "log.h"
-#include "idt.h"
-#include "timer.h"
-#include "keyboard.h"
-
-extern void idt_init(void);
-extern void isr_init(void);
-extern void irq_init(void);
-extern void pic_remap(void);
 
 void kernel_main(void)
 {
-    serial_init();
+
     KLOG_INFO("MicroCIOMOS booting...");
-
-    pic_remap();
-    isr_init(); // si hoy no tienes, basta con declarar/llamar y luego idt_init usa stubs
-    irq_init();
-    idt_init();
-
-    pit_init(100); // 100Hz
-
-    keyboard_init();
-
-    // habilitar interrupciones
-    __asm__ volatile("sti");
 
     KLOG_INFO("Kernel up. Waiting for IRQs...");
 

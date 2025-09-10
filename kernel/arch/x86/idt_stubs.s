@@ -7,16 +7,7 @@
 ; -----------------------------------------
 ; Funciones dummy para evitar linker errors
 ; -----------------------------------------
-[global isr_init]
-[global irq_init]
-[global idt_init]
-
-isr_init:
-    ret
-irq_init:
-    ret
-idt_init:
-    ret
+; NOTE: isr_init/irq_init/idt_init are defined in C (idt.c) to provide full implementations.
 
 ; -----------------------------------------
 ; Macros para ISR y IRQ

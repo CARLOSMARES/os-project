@@ -87,12 +87,20 @@ void idt_init(void)
 void isr_common_handler(uint32_t vec, uint32_t err)
 {
     KLOG_ERR("CPU EXCEPTION vec=%d err=0x%x", vec, err);
+    outb(0xE9, 'E');               // Indicar excepción
+    outb(0xE9, vec & 0xFF);        // Enviar vector bajo
+    outb(0xE9, (vec >> 8) & 0xFF); // Enviar vector alto
     for (;;)
         __asm__ volatile("hlt");
 }
 
 void irq_common_handler(uint32_t vec)
 {
+    KLOG_INFO("IRQ HANDLER vec=%d", vec);
+    outb(0xE9, 'I');               // Indicar IRQ
+    outb(0xE9, vec & 0xFF);        // Enviar vector bajo
+    outb(0xE9, (vec >> 8) & 0xFF); // Enviar vector alto
+
     if (vec >= 40)
         outb(0xA0, 0x20);
     outb(0x20, 0x20);

@@ -4,7 +4,11 @@
 #include "stdint.h"
 
 // Para simplificar, solo un dispositivo
-static ahci_device_t ahci_dev;
+static ahci_device_t ahci_dev_instance;
+
+// Export pointer for other modules that expect 'ahci_dev'. Start as NULL
+// so code knows AHCI is not initialized yet.
+ahci_device_t *ahci_dev = NULL;
 
 // Inicializa AHCI detectando puerto SATA
 int ahci_init(ahci_device_t *dev)
@@ -18,7 +22,9 @@ int ahci_init(ahci_device_t *dev)
 
     dev->bar5 = pci_get_bar(pci_dev.bus, pci_dev.slot, pci_dev.func, 5);
     dev->port = 0; // asumimos primer puerto AHCI
-    ahci_dev = *dev;
+    ahci_dev_instance = *dev;
+    /* mark global pointer as initialized */
+    ahci_dev = &ahci_dev_instance;
 
     printf("AHCI inicializado: BAR5=0x%llx, puerto=%u\n", (unsigned long long)dev->bar5, dev->port);
     return 0;

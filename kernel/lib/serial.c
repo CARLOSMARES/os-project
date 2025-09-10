@@ -30,7 +30,8 @@ void serial_write_char(char c)
     {
         serial_write_char('\r');
     }
-    while (!is_transmit_empty())
+    int timeout = 100000;
+    while (!is_transmit_empty() && --timeout > 0)
         ;
     outb(COM1, (uint8_t)c);
 }

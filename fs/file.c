@@ -10,8 +10,11 @@ static block_bitmap_t block_bitmap;
 static inode_bitmap_t inode_bitmap;
 static inode_t inodes[MAX_FILES];
 
-// Driver AHCI global
-extern ahci_device_t *ahci_dev = NULL;
+/* Canary para detectar sobrescrituras accidentales en BSS/stack */
+static uint32_t fs_canary = 0xCAFEBABE;
+
+// Driver AHCI global (declared elsewhere)
+extern ahci_device_t *ahci_dev;
 
 // Flag de inicialización
 static uint8_t fs_initialized = 0;
@@ -19,24 +22,73 @@ static uint8_t fs_initialized = 0;
 // Tabla de archivos abiertos
 static global_file_entry_t file_table[MAX_OPEN_FILES];
 
+// Buffer estático para operaciones de lectura/escritura de bloques
+static uint8_t fs_io_buffer[BLOCK_SIZE];
+// Buffer estático auxiliar para operaciones que no deben reusar fs_io_buffer
+static uint8_t fs_block_buffer[BLOCK_SIZE];
+
 // --- Funciones internas de lectura/escritura de bloques ---
 static void fs_read_block(uint32_t block_num, void *buffer)
 {
-    ahci_read_block(&ahci_dev, block_num, buffer);
+    if (ahci_dev)
+    {
+        ahci_read_block(ahci_dev, block_num, buffer);
+        return;
+    }
+
+    /* Fallback: leer desde almacenamiento en memoria (fs_storage) si no hay AHCI */
+    extern uint8_t fs_storage[];
+    if (!buffer)
+        return;
+    uint8_t *src = fs_storage + (block_num * BLOCK_SIZE);
+    /* poke E9 with a small marker for read
+       (helps QEMU userspace trace) */
+    __asm__ volatile("outb %%al, %0" : : "Nd"(0xE9), "a"(0x52));
+    for (int i = 0; i < BLOCK_SIZE; i++)
+        ((uint8_t *)buffer)[i] = src[i];
 }
 
 static void fs_write_block(uint32_t block_num, const void *buffer)
 {
-    ahci_write_block(&ahci_dev, block_num, buffer);
+    if (ahci_dev)
+    {
+        ahci_write_block(ahci_dev, block_num, buffer);
+        return;
+    }
+
+    /* Fallback: escribir en almacenamiento en memoria (fs_storage) si no hay AHCI */
+    extern uint8_t fs_storage[];
+    if (!buffer)
+        return;
+    uint8_t *dst = fs_storage + (block_num * BLOCK_SIZE);
+    /* poke E9 with a small marker for write */
+    __asm__ volatile("outb %%al, %0" : : "Nd"(0xE9), "a"(0x57));
+    for (int i = 0; i < BLOCK_SIZE; i++)
+        dst[i] = ((uint8_t *)buffer)[i];
 }
 
 // --- Guardar y cargar metadatos ---
 static void fs_save_metadata(void)
 {
-    uint8_t buffer[BLOCK_SIZE];
+    uint8_t *buffer = fs_io_buffer;
 
-    fs_write_block(0, &superblock);
+    printf("fs_save_metadata: writing superblock -> block 0\n");
+    fs_write_block(0, buffer);
+    /* comprobar canario tras escribir superblock */
+    if (fs_canary != 0xCAFEBABE)
+    {
+        printf("fs_save_metadata: CANARY CORRUPTED after superblock write: 0x%x\n", fs_canary);
+        __asm__ volatile("outb %%al, %0" : : "Nd"(0xE9), "a"(0x43));
+    }
+    printf("fs_save_metadata: writing block bitmap -> block 1\n");
     fs_write_block(1, &block_bitmap);
+    /* comprobar canario tras escribir block bitmap */
+    if (fs_canary != 0xCAFEBABE)
+    {
+        printf("fs_save_metadata: CANARY CORRUPTED after bitmap write: 0x%x\n", fs_canary);
+        __asm__ volatile("outb %%al, %0" : : "Nd"(0xE9), "a"(0x43));
+    }
+    printf("fs_save_metadata: writing inode bitmap -> block 2\n");
     fs_write_block(2, &inode_bitmap);
 
     int inodes_per_block = BLOCK_SIZE / sizeof(inode_t);
@@ -51,13 +103,23 @@ static void fs_save_metadata(void)
         memcpy(buffer + offset * sizeof(inode_t), &inodes[i], sizeof(inode_t));
 
         if (offset == inodes_per_block - 1 || i == MAX_FILES - 1)
+        {
+            printf("fs_save_metadata: writing inode block %u (blk=%d, offset=%d)\n", i / inodes_per_block, blk, offset);
             fs_write_block(blk, buffer);
+            /* check canary after each inode block write */
+            if (fs_canary != 0xCAFEBABE)
+            {
+                printf("fs_save_metadata: CANARY CORRUPTED after inode block %u: 0x%x\n", i / inodes_per_block, fs_canary);
+                __asm__ volatile("outb %%al, %0" : : "Nd"(0xE9), "a"(0x43));
+            }
+            printf("fs_save_metadata: finished inode block %u\n", i / inodes_per_block);
+        }
     }
 }
 
 static void fs_load_metadata(void)
 {
-    uint8_t buffer[BLOCK_SIZE];
+    uint8_t *buffer = fs_io_buffer;
 
     fs_read_block(0, &superblock);
 
@@ -106,6 +168,12 @@ int fs_init(void)
 // --- Formateo del FS ---
 int fs_format(void)
 {
+    printf("fs_format: start\n");
+    /* debug poke to I/O port 0xE9 for QEMU debug console */
+    {
+        unsigned char _c = 'S';
+        __asm__ volatile("outb %%al, %0" : : "Nd"(0xE9), "a"(_c));
+    }
     memset(&superblock, 0, sizeof(superblock));
     memset(&block_bitmap, 0, sizeof(block_bitmap));
     memset(&inode_bitmap, 0, sizeof(inode_bitmap));
@@ -129,7 +197,9 @@ int fs_format(void)
     inodes[0].links = 1;
     inodes[0].permissions = 0755;
 
+    printf("fs_format: about to save metadata (restored)\n");
     fs_save_metadata();
+    printf("fs_format: metadata saved (restored)\n");
     fs_initialized = 1;
 
     printf("FS formateado correctamente\n");
@@ -216,7 +286,7 @@ int fs_find_file(const char *filename, uint32_t *inode_num)
 
     for (int block_idx = 0; block_idx < 12 && root_inode->blocks[block_idx] != 0; block_idx++)
     {
-        uint8_t buffer[BLOCK_SIZE];
+        uint8_t *buffer = fs_block_buffer;
         fs_read_block(root_inode->blocks[block_idx], buffer);
 
         dir_entry_t *entries = (dir_entry_t *)buffer;
@@ -256,7 +326,7 @@ int fs_create_file(const char *filename, uint32_t type)
     new_inode->permissions = 0644;
 
     inode_t *root_inode = fs_get_inode(0);
-    uint8_t block_buf[BLOCK_SIZE];
+    uint8_t *block_buf = fs_block_buffer;
 
     for (int blk_idx = 0; blk_idx < 12; blk_idx++)
     {
@@ -325,7 +395,7 @@ int fs_read_file(int fd, void *buffer, uint32_t size, uint32_t offset)
             bytes_to_read = size - bytes_read;
 
         uint32_t block_num = block_index < 12 ? file_inode->blocks[block_index] : 0;
-        uint8_t block_buf[BLOCK_SIZE];
+        uint8_t *block_buf = fs_block_buffer;
 
         if (block_num != 0)
         {
@@ -370,7 +440,7 @@ int fs_write_file(int fd, const void *buffer, uint32_t size, uint32_t offset)
             file_inode->blocks[block_index] = block_num;
         }
 
-        uint8_t block_buf[BLOCK_SIZE];
+        uint8_t *block_buf = fs_block_buffer;
         if (block_offset != 0 || bytes_to_write < BLOCK_SIZE)
             fs_read_block(block_num, block_buf);
 

@@ -48,4 +48,16 @@ SECTIONS
     {
         *(.gcc_except_table*)
     }
+
+    /* Agregar una sección de encabezado para compatibilidad con QEMU */
+    .note ALIGN(4K) :
+    {
+        BYTE(0x00)
+    }
+
+    /* Nota PVH requerida por QEMU */
+    .pvh_note ALIGN(4K) :
+    {
+        BYTE(0x00)
+    }
 }
