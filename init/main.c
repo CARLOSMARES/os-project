@@ -7,9 +7,6 @@
 #include "vga_color.h"
 #include "port.h"
 
-// Inicializar serial temprano para poder capturar mensajes de arranque
-extern void serial_init(void);
-
 #ifdef __cplusplus
 extern "C"
 {
@@ -17,6 +14,8 @@ extern "C"
 
     // Declaración externa de kernel_main
     extern void kernel_main(void);
+    // Inicializar serial temprano para poder capturar mensajes de arranque
+    extern void serial_init(void);
     extern void idt_init(void);
     extern void isr_init(void);
     extern void irq_init(void);
@@ -26,11 +25,6 @@ extern "C"
     // Punto de entrada del kernel
     __attribute__((section(".entry"), used)) void _start(void)
     {
-        /* poke QEMU debug port to mark entry to _start */
-        // __asm__ volatile("movb $'S', %%al; out %%al, $0xE9" ::: "al");
-
-        // Agregar traza al inicio del kernel
-        outb(0xE9, 'K'); // Indicar inicio del kernel
 
         vga_clear_screen();
 
